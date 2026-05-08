@@ -205,6 +205,42 @@ spec 已经成熟、想跳过前置时，常见三种用法：
 
 ---
 
+## 与 Superpowers / GSD / 三栈工作流的关系
+
+`longtask` **不依赖** [Superpowers](https://github.com/obra/superpowers) 或 [GSD (get-shit-done)](https://github.com/gsd-build/get-shit-done)，反过来这两者也不依赖 `longtask`。`longtask` 唯一会主动调用的外部 Claude Code skill 是 [gstack](https://github.com/garrytan/gstack)，且只有当你在 spec 里 opt-in 写了 `gating:` / `ship:` 字段时才调。其他一切都是独立的。
+
+但这四个项目方法论同源，分别占据不同层：
+
+| 层 | 工具 | 解决的问题 |
+|---|---|---|
+| 决策 / 产品规划 | gstack `/office-hours`、`/plan-ceo-review`、`/plan-eng-review` | "我们要做的是不是对的事？" |
+| Spec 切阶段 | GSD `/gsd-discuss-phase`、`/gsd-plan-phase` | "怎么把活切成上下文安全的小块？" |
+| 执行纪律 | Superpowers `/test-driven-development`、`/using-git-worktree`、`/subagent-driven-development` | "怎么写代码而不跳过验证？" |
+| **Phase 级执行** | **`longtask`**（本 skill） | "把这份 spec 跑出来，每个 phase 都过严格的 A/B 验证。" |
+| 收尾发布 | gstack `/ship`、Superpowers `/finishing-development-branch` | "干净地把 PR 提了。" |
+
+`longtask` **内化了**其中两条思想，不调用外部工具：
+
+- **GSD 的"切阶段"** — spec 里已经有 P1 / P2 / P3，每个 phase 拉全新 sub-agent。你不会在 `/longtask` 里再跑 GSD。
+- **Superpowers 的"verify-first"纪律** — Codex B 是个严格的、全新上下文的验证者，必须按 `verify_cmd` 判定 artifact。你不会在 `/longtask` 里再跑 Superpowers 的 TDD loop。
+
+`longtask` 真正暴露的整合点显式而最小：只有 `gating:`（P1 之前的决策 skill）和 `ship:`（最后一个 phase 之后的发布）。两者默认关闭。
+
+### 什么时候用什么
+
+- **还没有 spec** → 用 gstack `/office-hours` + `/plan-ceo-review` + `/plan-eng-review`（或 GSD `/gsd-discuss-phase`）把设计想清楚，然后写 `spec.md`。`longtask` 故意不解决"设计还没想清楚"这个阶段。
+- **阶段切分不明确** → GSD 的 phase-discussion 流程最合适；把切好的结构落到 `spec.md` 里，再 `/longtask`。
+- **spec 已写好、只想执行** → `longtask` 就是执行器。如果设计工作已经在 skill 之外做完，加 `--skip-gating`。
+- **想把 gating + shipping 打包成一条命令** → `/longtask spec.md`，spec 里同时写 `gating:` 和 `ship:`。
+
+### 一台机器上四个全装吗？
+
+如果你做绿地产品、想跑 YouTube 演示里那套"Claude-headless + Ralph-Loop"16 阶段流水线 → 装齐 Superpowers + GSD + gstack + `longtask`，覆盖 Think → Plan → Execute → Ship 全弧线。
+
+如果你已经有一套靠谱的工作流、`longtask` 单装就够 → 不必都装。这四套互补但不强依赖，它们在不同 skill 命名空间，触发词不冲突。
+
+---
+
 ## 成本 & 速率限制
 
 - 每个 phase 通常跑 1–3 轮 Codex A↔B；每轮 = 2 次 `codex exec`。

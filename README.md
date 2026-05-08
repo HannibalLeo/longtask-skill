@@ -231,6 +231,59 @@ Combine flags where useful:
 
 ---
 
+## Relationship to Superpowers / GSD / the three-stack workflow
+
+`longtask` is **not** a dependency of [Superpowers](https://github.com/obra/superpowers)
+or [GSD (get-shit-done)](https://github.com/gsd-build/get-shit-done), and neither tool
+depends on `longtask`. The only Claude-Code skill `longtask` calls out to is
+[gstack](https://github.com/garrytan/gstack), and only when you opt in via the spec's
+`gating:` / `ship:` fields. Everything else is independent.
+
+That said, the four projects share intellectual ancestry. Each owns a different layer:
+
+| Layer | Tool | What it owns |
+|-------|------|--------------|
+| Decisions / product planning | gstack `/office-hours`, `/plan-ceo-review`, `/plan-eng-review` | "Are we building the right thing?" |
+| Spec phasing | GSD `/gsd-discuss-phase`, `/gsd-plan-phase` | "How do we slice the work into context-safe chunks?" |
+| Execution discipline | Superpowers `/test-driven-development`, `/using-git-worktree`, `/subagent-driven-development` | "How do we write the code without skipping verification?" |
+| **Phase-level execution** | **`longtask`** (this skill) | "Run THIS spec, with strict A/B verifier separation, until each phase passes." |
+| Shipping | gstack `/ship`, Superpowers `/finishing-development-branch` | "Open the PR cleanly." |
+
+`longtask` **internalizes** two of these ideas without calling the external tools:
+
+- **GSD's "slice into phases"** — your spec already has P1/P2/P3, and each phase gets a
+  fresh sub-agent. You don't run GSD inside `/longtask`.
+- **Superpowers' "verify-first" discipline** — Codex B is a strict, fresh-context verifier
+  that judges artifacts against `verify_cmd`. You don't run Superpowers' TDD loop inside
+  `/longtask`.
+
+The integration points that `longtask` does expose are explicit and minimal: only `gating:`
+(pre-P1 decision skills) and `ship:` (post-Pn shipping). Both default to off.
+
+### When to use what
+
+- **No spec yet** → run gstack `/office-hours` + `/plan-ceo-review` + `/plan-eng-review`
+  (or GSD `/gsd-discuss-phase`) to think the design through, then write `spec.md`.
+  `longtask` does not help with the un-thought-through stage on purpose.
+- **Phasing is unclear** → GSD's phase-discussion flow is the right place; drop the
+  resulting structure into `spec.md` and run `/longtask`.
+- **Spec is finished, just execute it** → `longtask` is the executor. Use `--skip-gating`
+  if you already did the design work outside the skill.
+- **Want gating + shipping bundled** → `/longtask spec.md` with both `gating:` and `ship:`
+  declared.
+
+### Do I need all four on the same machine?
+
+If you're doing greenfield product work and want the YouTube-demoed
+"Claude-headless + Ralph-Loop" 16-step pipeline, yes — Superpowers + GSD + gstack +
+`longtask` cover the full Think → Plan → Execute → Ship arc.
+
+If you already have a workflow you trust and `longtask` alone covers it, no — the four
+stacks are complementary, not required together. They live in different skill
+namespaces and don't compete for the same trigger words.
+
+---
+
 ## Cost & rate limits
 
 - Each phase typically runs 1–3 Codex A↔B rounds; each round is 2 `codex exec` calls.

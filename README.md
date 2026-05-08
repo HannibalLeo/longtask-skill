@@ -284,6 +284,61 @@ namespaces and don't compete for the same trigger words.
 
 ---
 
+## Hang protection: idle timeout + verifier integrity check
+
+Two failure modes show up after enough production use, both worth understanding
+before they bite:
+
+**1. Verifier inconsistency** — Codex B occasionally returns `verdict: "FAIL"`
+while every entry in `dod_results[*].passed` is `true` (or the inverse). The
+verdict and the AC list contradict each other. This is almost always a sign
+that `verify_passes_when` is poorly worded, not that the code is wrong; the next
+retry round generates more of the same contradiction.
+
+The sub-agent now runs an integrity check on B's JSON before trusting the
+verdict. Any of these mismatches **immediately ESCALATE** — no retries spawned:
+
+- `VERIFIER_INCONSISTENT_FAIL_BUT_AC_PASS`
+- `VERIFIER_INCONSISTENT_PASS_BUT_AC_FAIL`
+- `VERIFIER_MALFORMED_OUTPUT` (missing or empty `dod_results`)
+
+The escalation report includes B's full JSON so you can decide whether to
+tighten `verify_passes_when`, rewrite the offending DoD bullet, or relax
+`verify_cmd`.
+
+**2. Sub-agent silent hang** — between Codex CLI calls the sub-agent runs its
+own Bash + reasoning steps. Without a watchdog, a stuck sub-agent can sit idle
+for an hour while every individual `codex exec` invocation has long since
+finished or timed out. The new `idle_timeout_minutes` field (default **10**)
+puts a heartbeat-based watchdog in place:
+
+- Every progress boundary (round start, Codex A start/done, Codex B start/done,
+  commit, BLOCKED return) writes a heartbeat to
+  `.longtask/state/<spec>.json` under `phases.<Pn>.last_heartbeat` plus the
+  `heartbeats[]` audit trail.
+- At every round transition the sub-agent checks `now - last_heartbeat`. If
+  the gap exceeds `idle_timeout_minutes`, it returns
+  `BLOCKED reason="IDLE_TIMEOUT"` immediately, attaching the heartbeat tail.
+- This is an **idle** timeout, not a hard wall clock. As long as the sub-agent
+  keeps emitting progress (one heartbeat per round transition), the timer
+  resets. Real long work renews itself; only true hangs trip the watchdog.
+
+The default 10 minutes is deliberately tight — long-running Codex executions
+themselves are already capped at 30 min by `timeout 1800`, so the only thing
+that should ever exceed 10 minutes between heartbeats is a stuck sub-agent.
+Bump per phase only when you observe a real reason to.
+
+```yaml
+# spec phase override
+idle_timeout_minutes: 20   # only if you've measured a legitimate need
+```
+
+When `IDLE_TIMEOUT` triggers, the report's `heartbeats[]` tail tells you
+exactly where the gap opened (between which two events). That's almost always
+enough to diagnose whether the spec needs a fix or a simple `--resume` is safe.
+
+---
+
 ## Cost & rate limits
 
 - Each phase typically runs 1–3 Codex A↔B rounds; each round is 2 `codex exec` calls.

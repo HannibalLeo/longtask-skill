@@ -241,6 +241,37 @@ spec 已经成熟、想跳过前置时，常见三种用法：
 
 ---
 
+## 假死防护：idle timeout + verifier 一致性检查
+
+生产环境用了一段时间后，会冒出两种失败模式，提前理解很必要：
+
+**1. Verifier 不一致** — Codex B 偶尔返回 `verdict: "FAIL"` 但 `dod_results[*].passed` 全是 `true`（或者相反）。verdict 和 AC 列表自相矛盾。这几乎总是 `verify_passes_when` 写得不够明确，而不是代码错——下一轮 retry 只会复制同样的矛盾。
+
+Sub-agent 现在在收到 B 的 JSON 之后、信任 verdict 之前先跑一致性检查。任何下列矛盾**立即 ESCALATE**，**不再 spawn retry**：
+
+- `VERIFIER_INCONSISTENT_FAIL_BUT_AC_PASS`
+- `VERIFIER_INCONSISTENT_PASS_BUT_AC_FAIL`
+- `VERIFIER_MALFORMED_OUTPUT`（`dod_results` 缺失或为空）
+
+升级报告附 B 的完整 JSON，让你直接判断是该收紧 `verify_passes_when`、重写出错的 DoD 条目，还是放宽 `verify_cmd`。
+
+**2. Sub-agent 静默假死** — 两次 Codex CLI 调用之间，sub-agent 跑自己的 Bash + reasoning 步骤。如果没看门狗，一个卡住的 sub-agent 可以静坐一小时——而每次 `codex exec` 自己早已超时退出。新的 `idle_timeout_minutes` 字段（默认 **10**）放了一个**心跳式**看门狗：
+
+- 每个 progress 边界（round 开始、Codex A 开始/完成、Codex B 开始/完成、commit、BLOCKED 返回）都写一个心跳到 `.longtask/state/<spec>.json` 的 `phases.<Pn>.last_heartbeat`，并 append 到 `heartbeats[]` 审计轨迹。
+- 每个 round transition 时 sub-agent 检查 `now - last_heartbeat`。超出 `idle_timeout_minutes` → 立刻 `BLOCKED reason="IDLE_TIMEOUT"`，附 heartbeat 尾。
+- 这是 **idle 超时，不是硬 wall clock**。只要 sub-agent 持续输出 progress（每个 round transition 一次心跳），计时器就 reset。真正在工作就一直续命；只有真正卡死才被杀。
+
+默认 10 分钟是有意收紧的——长跑的 Codex 本身已经被 `timeout 1800` 兜底（30 min 上限），所以两次心跳之间唯一会超过 10 分钟的，就是卡死的 sub-agent。只在确有需要时按 phase override：
+
+```yaml
+# spec phase 覆盖
+idle_timeout_minutes: 20   # 仅当确实测出合理需要
+```
+
+`IDLE_TIMEOUT` 触发时，报告里的 `heartbeats[]` 尾巴会告诉你卡在哪两个事件之间。这一信息基本足够你判断是改 spec 还是直接 `--resume`。
+
+---
+
 ## 成本 & 速率限制
 
 - 每个 phase 通常跑 1–3 轮 Codex A↔B；每轮 = 2 次 `codex exec`。

@@ -58,9 +58,14 @@ verify_cmd: "<exact shell command B runs, e.g. 'pytest tests/p1_*.py -v'>"
 verify_passes_when: "<concrete predicate, e.g. 'exit 0 and 0 failures in output'>"
 max_retry_rounds: 3                                           # default 3, bump for big refactors
 cost_budget_usd: 5                                            # optional; sub-agent stops + asks if exceeded
+idle_timeout_minutes: 10                                      # optional, default 10. anti-hang watchdog
 ```
 
 Missing required field → orchestrator STOPs, points at line/phase, no codex invocation.
+
+**`idle_timeout_minutes` semantics** — this is an **idle** timeout, not a hard wall-clock cap. The sub-agent stamps a heartbeat to the state file at every progress boundary (round start, Codex A start/done, Codex B start/done, commit, BLOCKED return). At every round transition it checks `now - last_heartbeat`; if the gap exceeds `idle_timeout_minutes`, it returns `BLOCKED reason="IDLE_TIMEOUT"` immediately. While the sub-agent is making progress (each progress line resets the timer), it can run as long as it needs. This protects against the "1-hour silent hang" failure mode where a sub-agent gets stuck in internal reasoning between rounds without timing out any single `codex exec` call.
+
+The timeout does NOT cover Codex CLI execution itself — `codex exec` is already wrapped in `timeout 1800` (30 min hard cap). The two layers compose: codex's hard cap protects against a stuck CLI; the idle timeout protects against a stuck sub-agent.
 
 **Inline spec example with gating + ship**:
 
@@ -118,14 +123,28 @@ Each spec run writes `.longtask/state/<spec_basename>.json` (repo root, or `~/.l
   "gating_cleared_at": "2026-05-08T...",
   "ship_status": "PENDING | DONE | FAILED",
   "phases": {
-    "P1": {"status": "PASS", "rounds": 1, "commit": "abc123", "duration_s": 142},
+    "P1": {
+      "status": "PASS",
+      "rounds": 1,
+      "commit": "abc123",
+      "duration_s": 142,
+      "last_heartbeat": "2026-05-08T...",
+      "heartbeats": [
+        {"at": "2026-05-08T14:01:00+08:00", "event": "phase-start"},
+        {"at": "2026-05-08T14:01:05+08:00", "event": "round-1-codex-a-start"},
+        {"at": "2026-05-08T14:09:30+08:00", "event": "round-1-codex-a-done"},
+        {"at": "2026-05-08T14:09:32+08:00", "event": "round-1-codex-b-start"},
+        {"at": "2026-05-08T14:11:42+08:00", "event": "round-1-codex-b-done"},
+        {"at": "2026-05-08T14:11:50+08:00", "event": "phase-pass"}
+      ]
+    },
     "P2": {"status": "BLOCKED", "rounds": 3, "report": ".longtask/reports/P2-blocked.md"},
     "P3": {"status": "PENDING"}
   }
 }
 ```
 
-`gating_cleared_at` is set on first gating success; absence means gating still pending. `ship_status` is omitted entirely when `ship: false` — its presence flags that ship was attempted at least once. Phase `status` enum: `PENDING | PASS | FAIL | BLOCKED | SKIPPED`. `SKIPPED` is written by `--from <Pn>` for every phase before `<Pn>` (no `commit` field, no rounds counted).
+`gating_cleared_at` is set on first gating success; absence means gating still pending. `ship_status` is omitted entirely when `ship: false` — its presence flags that ship was attempted at least once. Phase `status` enum: `PENDING | PASS | FAIL | BLOCKED | SKIPPED`. `SKIPPED` is written by `--from <Pn>` for every phase before `<Pn>` (no `commit` field, no rounds counted). `last_heartbeat` and `heartbeats[]` are the idle-timeout watchdog's audit trail; they let `--resume` skip immediately to the right round and let post-mortem reconstruct where time went.
 
 - `/longtask <spec>` (no flag) + state exists → ask user **resume** (skip PASS) vs **restart** (clear state).
 - `/longtask <spec> --resume` → silent resume from first non-PASS.
@@ -234,33 +253,67 @@ on .longtask/); WebSearch; WebFetch. Do NOT use Edit/Write on source files.
 Procedure:
 
 1. Read spec; extract {Pn}'s: goals, file_scope, do_not_touch, inputs, outputs,
-   verify_cmd, verify_passes_when, max_retry_rounds (default 3), cost limits.
+   verify_cmd, verify_passes_when, max_retry_rounds (default 3), cost limits,
+   idle_timeout_minutes (default 10).
    Read state file for prior round count if resuming.
    Contradiction or missing field → return ESCALATE.
 
-2. Author Codex A prompt (skeleton below). Print
-   "🔧 {Pn} round {N}/{max} · Codex A executing".
+   **Heartbeat helper**: every progress line you emit MUST also write to the
+   state file under `phases.{Pn}.last_heartbeat` (ISO 8601) and append to
+   `phases.{Pn}.heartbeats[]` an entry `{at: <iso8601>, event: <slug>}`.
+   Slug naming: `phase-start`, `round-N-codex-a-start`, `round-N-codex-a-done`,
+   `round-N-codex-b-start`, `round-N-codex-b-done`, `phase-pass`,
+   `phase-blocked-<reason>`. This is the idle-timeout watchdog's audit trail.
+
+   **Idle-timeout check** (run at every round transition, BEFORE invoking Codex):
+   if `now - last_heartbeat > idle_timeout_minutes`, return immediately
+   `BLOCKED reason="IDLE_TIMEOUT"` with the heartbeats[] tail attached. Do NOT
+   spawn another Codex call — by definition you've been silent too long and
+   the orchestrator/user needs to intervene.
+
+2. Heartbeat `phase-start` (or `round-N-start` if resuming). Author Codex A
+   prompt (skeleton below). Print "🔧 {Pn} round {N}/{max} · Codex A executing"
+   and heartbeat `round-N-codex-a-start`.
 
 3. Invoke Codex A:
    timeout 1800 codex exec --skip-git-repo-check \
      -c model="gpt-5.5" \
      -c model_reasoning_effort="xhigh" \
      --dangerously-bypass-approvals-and-sandbox "<A prompt>"
+   Heartbeat `round-N-codex-a-done` immediately on return.
    On exit 124: treat as FAIL reason "TIMEOUT".
    Run `git status` + `git diff --stat`. Verify changes are within file_scope
    and not in do_not_touch. Violation → return ESCALATE.
 
-4. Author Codex B prompt (skeleton below). Print
-   "🔍 {Pn} round {N}/{max} · Codex B verifying".
+4. Idle-timeout re-check. Author Codex B prompt (skeleton below). Print
+   "🔍 {Pn} round {N}/{max} · Codex B verifying" and heartbeat
+   `round-N-codex-b-start`.
 
-5. Invoke Codex B with the SAME fixed command (only the prompt differs). Parse strict JSON output.
+5. Invoke Codex B with the SAME fixed command (only the prompt differs). Parse strict JSON output. Heartbeat `round-N-codex-b-done`.
 
-6. If B.verdict == "PASS":
+5.5. **Verifier integrity check** (immediately after parsing B's JSON, BEFORE
+   trusting the verdict):
+   - Let `verdict_passes = (B.verdict == "PASS")` and
+     `all_acs_pass = all(d.passed for d in B.dod_results)`.
+   - If `not verdict_passes and all_acs_pass` (FAIL but every AC passed):
+     return `ESCALATE reason="VERIFIER_INCONSISTENT_FAIL_BUT_AC_PASS"` with
+     B's full JSON attached. The verdict and AC list contradict each other —
+     this is a verifier failure or a poorly-worded `verify_passes_when`, NOT a
+     code defect. Spawning round N+1 cannot fix it; the spec or the prompt
+     skeleton needs human attention.
+   - If `verdict_passes and not all_acs_pass` (PASS but some AC failed):
+     return `ESCALATE reason="VERIFIER_INCONSISTENT_PASS_BUT_AC_FAIL"` with
+     B's full JSON. Don't commit silently broken work.
+   - If `dod_results` is empty or missing: return
+     `ESCALATE reason="VERIFIER_MALFORMED_OUTPUT"` with the raw stdout.
+
+6. If B.verdict == "PASS" (and integrity check passed):
    - `git add -A && git commit -m "[longtask:{spec_basename}:{Pn}] <one-line goal>"`
-   - Capture commit sha. Update state file. Print "✅ {Pn} PASS ...".
+   - Capture commit sha. Update state file. Heartbeat `phase-pass`.
+     Print "✅ {Pn} PASS ...".
    - Return DONE with commit sha + B's evidence summary.
 
-7. If B.verdict == "FAIL" and rounds_used < max_retry_rounds:
+7. If B.verdict == "FAIL" (and integrity check passed) and rounds_used < max_retry_rounds:
    - Build fresh Codex A prompt with Retry prompt prefix (B's JSON verbatim
      + git diff). Increment round. Loop to step 3.
 
@@ -377,12 +430,33 @@ B FAIL × max_retry_rounds + web-search FAIL → BLOCKED + .longtask/reports/{Pn
 spec / security / scope-violation issue     → ESCALATE
 cost budget hit                              → BLOCKED reason="COST_BUDGET"
 .longtask/.stop flag                         → BLOCKED reason="USER_STOPPED"
+sub-agent silent > idle_timeout_minutes      → BLOCKED reason="IDLE_TIMEOUT"
+B verdict=FAIL but all dod_results passed    → ESCALATE reason="VERIFIER_INCONSISTENT_FAIL_BUT_AC_PASS"
+B verdict=PASS but some dod_results failed   → ESCALATE reason="VERIFIER_INCONSISTENT_PASS_BUT_AC_FAIL"
+B JSON missing / empty dod_results           → ESCALATE reason="VERIFIER_MALFORMED_OUTPUT"
 
 Orchestrator surfaces structured report. User options:
   - edit spec → `/longtask <spec> --resume`
   - manually fix → `/longtask <spec> --resume`
   - skip phase: edit state, mark Pn as SKIPPED, then resume
   - abort: rm .longtask/state/<spec>.json
+
+For VERIFIER_INCONSISTENT_*, the fix is almost always one of:
+  - tighten `verify_passes_when` so B can no longer split verdict from AC list
+  - rewrite specific dod bullets that B keeps mis-judging
+  - relax `verify_cmd` if it surfaces noise unrelated to the phase goals
+Don't just bump max_retry_rounds — if B is inconsistent, more rounds spawn more
+contradictions. The skill explicitly refuses to retry past an integrity failure.
+
+For IDLE_TIMEOUT, inspect `phases.{Pn}.heartbeats[]` to see where the gap was:
+  - long gap before any codex call → sub-agent stuck in spec parsing or state
+    setup; spec likely has an ambiguity worth fixing before resume
+  - long gap between `codex-a-done` and `codex-b-start` → sub-agent stuck
+    interpreting A's diff; check git diff is sane, then resume
+  - long gap before next round's `codex-a-start` → sub-agent stuck deciding
+    next prompt after a FAIL; inspect last B JSON for malformed verdict
+The default 10-minute idle window catches all these without making real work
+hit the wall.
 ```
 
 ## Project-specific tuning

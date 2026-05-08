@@ -157,7 +157,9 @@ Each spec run writes `.longtask/state/<spec_basename>.json` (repo root, or `~/.l
 
 ## Codex CLI invocation
 
-Both A and B use the SAME fixed command. Only the prompt differs. Cross-check comes from fresh context + structured JSON verdict against the spec's `verify_cmd`, not from model heterogeneity.
+Both A and B use the SAME fixed command. Only the prompt differs. Cross-check comes from fresh context + structured JSON verdict against the spec's `verify_cmd`, **not** from model heterogeneity. (See README → "Single-model setup" — replacing both A and B with the same `claude --print` invocation is fully supported; the load-bearing invariants are prompt-layer fresh context + strict JSON verdict, not "two different models".)
+
+Author's reference command:
 
 ```bash
 timeout 1800 codex exec --skip-git-repo-check \
@@ -168,6 +170,8 @@ timeout 1800 codex exec --skip-git-repo-check \
 ```
 
 `codex exec` is one-shot stateless. Sub-agent rebuilds A's "context" between rounds by prepending prior diff + B's JSON verdict.
+
+**Model substitution.** To run on a different stack, replace this command block — the rest of the skill (orchestrator, sub-agent, prompt skeletons, integrity check, idle watchdog) is unchanged. Two requirements for any substitute CLI: (a) **stateless one-shot** — every call is independent, no conversation history carried by default; (b) **timeout-wrappable** — supports being killed by `timeout 1800` without leaving zombie processes. Examples: `claude --print --model <name>`, `gemini --prompt`, `llm -m <model>`. CLIs that maintain a session by default (REPL-style) break the fresh-context invariant and must NOT be used.
 
 ## CLI flags
 

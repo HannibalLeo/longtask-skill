@@ -1,164 +1,190 @@
-# longtask — Spec-Driven Multi-Phase Execution Skill for Claude Code
+# longtask — Claude Code 的 Spec 驱动多阶段执行 Skill
 
-**English** · [简体中文](README.zh-CN.md)
+**简体中文** · [English](README.en.md)
 
-A Claude Code skill that turns a phased spec file into an autonomous execution pipeline.
-Each phase runs an ephemeral sub-agent that drives **Codex A (executor) ↔ Codex B (verifier)**
-with fresh context and structured PASS/FAIL verdicts — up to N fix→verify rounds, then
-escalates to web-search-driven decision before blocking.
+一个 Claude Code skill：把一份分阶段的 spec 文件变成自动化执行流水线。每个 phase 拉起一个一次性的 sub-agent，sub-agent 驱动 **Codex A（执行者）↔ Codex B（验证者）**，每轮都用全新上下文 + 严格 JSON 格式的 PASS/FAIL 判定 — 最多 N 轮 fix→verify 循环，超出后转 web 搜索决策、再不行就升级到人。
 
 ---
 
-## Why
+## 为什么要这个
 
-LLM coding agents fail at long tasks for two reasons:
+LLM 编码 Agent 在长任务里失败的根因有两个：
 
-1. **Context rot** — the context window fills with stale reasoning halfway through.
-2. **Verifier capture** — the same model that wrote the code judges whether it works.
+1. **Context rot（上下文腐烂）** — 半路上上下文窗口已被无关推理塞满。
+2. **Verifier capture（验证者被俘获）** — 写代码的模型同时判断代码对不对。
 
-`longtask` solves both:
+`longtask` 同时解决这两个问题：
 
-- **Per-phase fresh sub-agent + per-round fresh Codex prompt** kill context rot.
-- **Strict A/B separation** (different prompts, no shared memory, JSON-only verdict against
-  the spec's `verify_cmd`) kills verifier capture.
+- **每个 phase 一个全新 sub-agent + 每轮一次性 Codex 提示** → 杀掉 context rot。
+- **A / B 严格分离**（提示不同、无共享记忆、只输出对照 spec `verify_cmd` 的 JSON 判定）→ 杀掉 verifier capture。
 
-The orchestrator (the Claude Code session) never reads source or runs tests — it only
-dispatches sub-agents and tracks state. Sub-agents never expand scope. Codex A only writes
-inside the phase's `file_scope`. Codex B only reads artifacts and runs the spec's
-`verify_cmd`. Source-of-truth lives in the spec, not in the agents.
+Orchestrator（当前 Claude Code 会话）从不读源码、从不跑测试 — 它只派发 sub-agent、维护状态。Sub-agent 不能扩大 scope。Codex A 只能写 phase 的 `file_scope` 内文件。Codex B 只读 artifact 与跑 spec 的 `verify_cmd`。真源在 spec 里，不在 agent 里。
 
 ---
 
-## Architecture
+## 架构
 
 ```
-You (this session, opus)         = Main Orchestrator
-  ↓ Agent tool, one phase at a time
-Sub-Agent (opus, fresh per phase) = Phase Conductor
-  ↓ Bash → codex exec, sequence + retry loop
-Codex A (executor)  ←→  Codex B (verifier, fresh context)
+你（当前会话，opus）             = 主 Orchestrator
+  ↓ Agent 工具，一次一个 phase
+Sub-Agent（opus，每 phase 全新） = Phase Conductor
+  ↓ Bash → codex exec，序列化 + 重试循环
+Codex A（执行者）  ←→  Codex B（验证者，全新上下文）
 ```
 
-| Tier | Reads files? | Writes code? | Commits? | Persistence |
-|------|---|---|---|---|
-| Orchestrator | spec + state file + sub-agent reports | NO | NO | survives whole spec |
-| Sub-Agent | spec + git diff + test output + state file | NO (only authors codex prompts) | YES (after B PASS) | per phase, killed on DONE |
-| Codex A | spec + scoped files | YES (working tree only) | NO | one-shot per round |
-| Codex B | spec + working tree + tests | NO | NO | one-shot per round |
+| 层 | 读源码？ | 写代码？ | 提交？ | 持续期 |
+|---|---|---|---|---|
+| Orchestrator | spec + 状态文件 + sub-agent 报告 | NO | NO | 整个 spec 期间 |
+| Sub-Agent | spec + git diff + 测试输出 + 状态文件 | NO（只写 codex 提示词） | YES（B 判 PASS 后） | 单 phase，DONE 后销毁 |
+| Codex A | spec + scope 内文件 | YES（仅工作树） | NO | 每轮一次性 |
+| Codex B | spec + 工作树 + 测试 | NO | NO | 每轮一次性 |
 
 ---
 
-## Prerequisites
+## 前置条件
 
-### Operating system
+### 操作系统
 
-- **macOS** (tested on Apple Silicon)
-- **Linux** (should work; not tested in CI)
-- Windows is **not officially supported** — Claude Code on Windows still works, but the
-  skill assumes a POSIX shell and `bash`-style heredocs in the prompt skeletons.
+- **macOS**（在 Apple Silicon 实测过）
+- **Linux**（应该可以，未跑 CI）
+- **Windows 不官方支持** — Claude Code 在 Windows 仍可用，但 skill 假设是 POSIX shell + bash 风格 heredoc
 
-### Required runtimes
+### 必需的运行时
 
-| Tool | Minimum version | Why |
-|------|---|---|
-| Claude Code CLI | latest | Skill harness; `Skill` and `Agent` tools; loads `~/.claude/skills/` |
-| Codex CLI | recent (supports `codex exec`, `--skip-git-repo-check`, `-c model=...`, `-c model_reasoning_effort=...`) | Phase Conductor's executor / verifier loop |
-| `bash` | 4+ | Sub-agent runs `codex exec` via Bash |
-| `git` | 2.30+ | sub-agent commits each PASS |
-| `timeout` (GNU coreutils) | any | Wraps every `codex exec` (30 min cap). On macOS `brew install coreutils` provides `gtimeout`; ensure your `PATH` exposes it as `timeout` if the shell can't find one |
+| 工具 | 最低版本 | 用途 |
+|---|---|---|
+| Claude Code CLI | latest | Skill 宿主；提供 `Skill` / `Agent` 工具；自动加载 `~/.claude/skills/` |
+| Codex CLI | 较新版本（支持 `codex exec`、`--skip-git-repo-check`、`-c model=...`、`-c model_reasoning_effort=...`） | Phase Conductor 的 executor / verifier 循环 |
+| `bash` | 4+ | sub-agent 通过 Bash 调 `codex exec` |
+| `git` | 2.30+ | sub-agent 在每个 PASS 后 commit |
+| `timeout`（GNU coreutils） | 任意 | 包裹每个 `codex exec`（30 分钟上限）。macOS 用户：`brew install coreutils` 会装 `gtimeout`，确保你的 PATH 让 `timeout` 能解析到它 |
 
-### Required accounts & access
+### 必需的账号 / 访问权限
 
-- **Anthropic account** with Claude Code access — the orchestrator and per-phase sub-agents
-  run as Claude `opus`. Get a Pro / Max plan or use a Claude API key with sufficient quota.
-  Sign in via `claude auth login` (or by running Claude Code; it'll guide you).
-- **OpenAI account** with **Codex CLI** access AND **GPT-5.5** model access — both Codex A
-  and Codex B run `codex exec ... -c model="gpt-5.5"` with `model_reasoning_effort="xhigh"`.
-  Authenticate via `codex auth login` or by setting `OPENAI_API_KEY`. Verify with
-  `codex exec --skip-git-repo-check -c model="gpt-5.5" "say hi"`.
+> **作者参考配置 = Claude（orchestrator + sub-agent）+ Codex（A 与 B）双模型**。但 skill 设计是**模型无关**的 — 真正不能动的不变量是 ① 每轮 fresh context，② 严格 JSON verdict 对照 spec 的 `verify_cmd`。所以**单模型也能跑**，详见下方「单模型设置」章节。
 
-> If you don't yet have GPT-5.5 access, you can edit the model name in `SKILL.md`'s
-> `## Codex CLI invocation` section to a model your account supports (e.g. `gpt-5`,
-> `gpt-4.1`). The skill is model-agnostic in design — only the verdict format (strict JSON)
-> and the fresh-context discipline are load-bearing.
+按作者参考配置：
 
-### Optional but recommended
+- **Anthropic 账号** + Claude Code 访问 — Orchestrator 与每个 phase 的 sub-agent 都跑在 Claude `opus`。需要 Pro / Max 订阅，或者用 Claude API key（带足够配额）。通过 `claude auth login` 登录（运行 Claude Code 也会引导）。
+- **OpenAI 账号** + **Codex CLI** 访问 + **GPT-5.5** 模型权限 — Codex A 和 Codex B 都跑 `codex exec ... -c model="gpt-5.5"`，`model_reasoning_effort="xhigh"`。通过 `codex auth login` 登录或设置 `OPENAI_API_KEY`。验证一行：
 
-- **[gstack](https://github.com/garrytan/gstack)** — required only if you use the
-  `gating:` and `ship:` fields in your spec. Without gstack the skill works exactly as
-  before (no gating, no auto-ship); gating list / ship flag default to off.
-- **[claude-mem](https://github.com/thedotmack/claude-mem)** — cross-session memory
-  capture; helpful when a single longtask spec spans multiple Claude Code sessions.
+  ```bash
+  codex exec --skip-git-repo-check -c model="gpt-5.5" -c model_reasoning_effort="xhigh" "say hi"
+  ```
+
+如果没有 GPT-5.5 权限，可以改 `SKILL.md` 里 `## Codex CLI invocation` 那段的模型名，换成你账号能用的（如 `gpt-5`、`gpt-4.1`），Codex CLI 那段的双角色循环不变。
+
+### 单模型设置（可选）
+
+`longtask` 不强制要求 Claude + Codex 双模型，两个**真正不能动的不变量**是：
+
+1. **每轮 fresh context** — A 和 B 的 prompt 都是当轮新写的，没有跨轮共享 memory。
+2. **严格 JSON verdict 对照 `verify_cmd`** — B 不"读了代码自由判断"，而是跑 spec 写明的命令、回固定 schema 的 JSON。
+
+只要这两条满足，A / B 用什么模型都可以，**单模型同样跑得通**。底层原因：fresh context 是**提示词层面**的（每轮重写 prompt、不传 history），不是模型层面的。即使 A 和 B 是同一个模型，B 看到的 prompt 也只有 spec + 工作树 + `verify_cmd` 的输出，**完全没有 A 的 reasoning 链**，verifier capture 就被切断了。
+
+异质模型（如作者用的 Claude + Codex）的额外好处是 **cross-model 验证**更稳 — B 的失败 mode 和 A 不同，更难一起出错。但这是"加分项"，不是 longtask 正确性的必要条件。
+
+#### 常见替代组合
+
+**全 Claude（只有 Anthropic 订阅）**
+
+- Orchestrator 与 sub-agent 仍是 Claude Code 自身（不用动）
+- 把 `SKILL.md` 里 `## Codex CLI invocation` 那段的命令换成：
+
+  ```bash
+  timeout 1800 claude --print --model claude-sonnet-4-5 "<A or B prompt>"
+  ```
+
+- 同一段命令，A 和 B 只是 prompt 不同；fresh context 仍然成立。
+- B 的 JSON 输出强约束保留（提示词里要求"严格 JSON、否则视为 VERIFIER_MALFORMED_OUTPUT"），不依赖模型本身能不能"按 JSON 模式"。
+
+**全 Codex（只有 OpenAI 账号、不想跑 Claude Code）**
+
+- 这个组合不推荐 — Claude Code 的 `Skill` / `Agent` 工具是 longtask orchestrator 的关键依赖。如果你完全没有 Anthropic 账号，建议**用 Claude Code Pro 跑 orchestrator + sub-agent，A / B 仍走 codex**（这本来就是作者参考配置）。
+- 真要全 Codex 跑，需要把 orchestrator / sub-agent 重写成外部 shell 脚本调度 codex，工作量较大，不在本 skill 默认 scope。
+
+**全 Gemini / 其他 stateless one-shot CLI**
+
+- 把 `## Codex CLI invocation` 段命令换成对应 CLI（gemini、`llm` 之类），原则同上：每次调用是 stateless 一次性的、Bash 调起。
+- 不要选**默认带 history 的 CLI**（会破坏 fresh-context 不变量）。
+
+#### 选型建议
+
+- 单兵开发、想最低成本起步：**全 Claude（sonnet 或 opus）** —— 一个账号、一个鉴权、跑得通。
+- 想要最强 cross-model 验证：作者参考组合（Claude `opus` orchestrator + Codex `gpt-5.5 xhigh` A/B）。
+- 不论哪种组合，**`verify_cmd` 写得严谨**比"模型用最强款"对最终结果影响大得多 — 长任务失败几乎都是 spec 写崩，不是模型不够强。
+
+### 可选但推荐
+
+- **[gstack](https://github.com/garrytan/gstack)** — 仅当你用 spec 的 `gating:` / `ship:` 字段时需要。不装 gstack 也能用 longtask（`gating` 字段省略 / `ship: false` 默认就关），效果与不带这两个字段一致。
+- **[claude-mem](https://github.com/thedotmack/claude-mem)** — 跨会话自动记忆；当一份 longtask spec 跨多个 Claude Code 会话时有用。
 
 ---
 
-## Install
+## 安装
 
-### 1. Install Claude Code (if you haven't)
+### 1. 装 Claude Code（如果还没装）
 
-Follow [Anthropic's docs](https://docs.anthropic.com/en/docs/claude-code). Verify with:
+按 [Anthropic 官方文档](https://docs.anthropic.com/en/docs/claude-code) 安装。验证：
 
 ```bash
 claude --version
 ```
 
-### 2. Install Codex CLI and authenticate
+### 2. 装 Codex CLI 并登录
 
-Follow [OpenAI's instructions](https://github.com/openai/codex). Authenticate, then verify:
+按 [OpenAI 的指南](https://github.com/openai/codex) 安装、登录，然后跑：
 
 ```bash
 codex --version
 codex exec --skip-git-repo-check -c model="gpt-5.5" -c model_reasoning_effort="xhigh" "say hi"
 ```
 
-If the second command returns text, both auth and model access are ready.
+第二条命令返回了文字 → 鉴权和模型权限都就绪。
 
-### 3. (Optional) Install gstack
+### 3.（可选）装 gstack
 
-Skip this section if you don't plan to use `gating:` or `ship:`.
+不打算用 `gating:` / `ship:` 的话跳过这一步。
 
 ```bash
-# bun is required by gstack's setup script (compiles the /browse binary)
+# bun 是 gstack setup 脚本编译 /browse 二进制需要的
 brew install oven-sh/bun/bun
 
-# clone + register
+# clone + 注册
 git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
 cd ~/.claude/skills/gstack && ./setup --quiet
 ```
 
-### 4. Install the longtask skill
+### 4. 装 longtask skill
 
 ```bash
 git clone --single-branch --depth 1 https://github.com/HannibalLeo/longtask-skill.git ~/.claude/skills/longtask
 ```
 
-Claude Code auto-loads any skill placed under `~/.claude/skills/<name>/SKILL.md`, so the
-next session will see `longtask`.
+Claude Code 自动加载 `~/.claude/skills/<name>/SKILL.md` 下的所有 skill，下次会话就能看到 `longtask`。
 
-### 5. Verify
+### 5. 验证
 
-Open a fresh Claude Code session in any project directory. Ask:
+打开一个新的 Claude Code 会话（任何项目目录都行）。问：
 
 ```
 list available skills
 ```
 
-You should see `longtask` in the output. To smoke-test without committing real code, copy
-the inline spec example from `SKILL.md` (`## Spec schema` → "Inline spec example with
-gating + ship") into `spec.md`, set `gating: []` and `ship: false`, and run:
+输出里应该能看到 `longtask`。冒烟测试可以把 `SKILL.md` 里 `## Spec schema` 那段的 inline 例子复制成 `spec.md`，把 `gating: []` 和 `ship: false` 设上，跑：
 
 ```
 /longtask spec.md
 ```
 
-The orchestrator will validate the schema and immediately surface any error if Codex CLI
-or auth is misconfigured.
+Orchestrator 会校验 schema，立刻报出 Codex CLI 或鉴权配错的信息（如有）。
 
 ---
 
-## Quick start
+## 快速上手
 
-Write a spec file at `<repo>/spec.md`:
+在 `<repo>/spec.md` 写一份 spec：
 
 ```markdown
 ---
@@ -166,203 +192,151 @@ gating: [office-hours, plan-ceo-review, plan-eng-review]
 ship: true
 ---
 
-# P1: Add /healthz endpoint
-goals: Expose `GET /healthz` returning `{"status":"ok"}` with 200 and no auth.
+# P1: 加 /healthz 端点
+goals: 暴露 `GET /healthz`，返回 `{"status":"ok"}`，HTTP 200，无需鉴权。
 file_scope: [src/routes/health.ts, tests/health.test.ts]
 do_not_touch: [src/auth/**, src/db/**]
 inputs: []
-outputs: [src/routes/health.ts (registered in app router)]
+outputs: [src/routes/health.ts（已注册到 app router）]
 verify_cmd: "npm test -- tests/health.test.ts"
-verify_passes_when: "exit 0 and 0 failures"
+verify_passes_when: "exit 0 且 0 个 failures"
 max_retry_rounds: 3
 ```
 
-Then in Claude Code:
+然后在 Claude Code 里：
 
 ```
 /longtask spec.md
 ```
 
-The orchestrator will:
+Orchestrator 会：
 
-1. Run the gating skills (`office-hours`, `plan-ceo-review`, `plan-eng-review`) and wait
-   for your "ok proceed" between each. Skip this step entirely by setting `gating: []`
-   or omitting the field.
-2. Spawn a fresh sub-agent for P1; the sub-agent runs Codex A↔B until PASS or BLOCKED.
-3. Commit on PASS, write a state JSON at `.longtask/state/spec.json`, then advance.
-4. After all phases PASS, invoke `gstack /ship` (push, open PR). Skip by omitting `ship:`.
+1. 跑 gating skill（`office-hours` → `plan-ceo-review` → `plan-eng-review`），每个 gate 之间等你说"ok proceed"。`gating: []` 或省略字段 → 整段跳过。
+2. 派一个全新 sub-agent 跑 P1；sub-agent 内部 Codex A↔B 循环，直到 PASS 或 BLOCKED。
+3. PASS 后自动 commit、写状态到 `.longtask/state/spec.json`，进 P2。
+4. 全部 phase PASS 后调 `gstack /ship`（push、开 PR）。省略 `ship:` → 不执行最后一步。
 
-Without the `gating:` and `ship:` lines, the spec runs with the legacy behavior (P1 starts
-immediately, no auto-ship at end) — the new fields are fully backward compatible.
+不写 `gating:` 和 `ship:` → 跑现有的旧行为（P1 立即开始、最后不自动 ship），新字段完全向后兼容。
 
-See `SKILL.md` for the full spec schema, prompt skeletons, retry/escalation logic,
-state-file format, resume rules (`/longtask <spec> --resume`), and roadmap.
+完整字段、提示模板、重试 / 升级逻辑、状态文件格式、resume 规则（`/longtask <spec> --resume`）、roadmap，都在 `SKILL.md`。
 
 ---
 
-## Already have a design doc? Start later in the pipeline
+## 已有设计文档？从中段开始
 
-Three common cases when the spec is already mature and you want to skip the front matter:
+spec 已经成熟、想跳过前置时，常见三种用法：
 
-| You have... | Run | What it does |
+| 你的情况 | 命令 | 行为 |
 |---|---|---|
-| A spec, no decision review needed | `/longtask spec.md` (with `gating:` omitted from the spec) | P1→Pn directly, no gating loop. |
-| A spec WITH `gating:` declared, but you've already done the design work elsewhere | `/longtask spec.md --skip-gating` | One-shot override: ignore the spec's `gating:` field, jump to P1. Spec stays unchanged. |
-| Already implemented P1/P2 by hand, want longtask to drive from P3 onward | `/longtask spec.md --from P3` | Implies `--skip-gating`. Phases before P3 are written as `SKIPPED` in the state file (no commit sha, no rounds). P3 runs as if it were the entry phase. |
-| Resuming a previously-blocked run | `/longtask spec.md --resume` | Reads `.longtask/state/<spec>.json`. Skips PASS phases. If state has `gating_cleared_at`, gating is also skipped. |
+| spec 写好，不需要 review | `/longtask spec.md`（spec 不写 `gating:`） | 直接 P1→Pn，无 gating 循环 |
+| spec 里写了 `gating:`，但你已经在 longtask 之外做完了决策 | `/longtask spec.md --skip-gating` | 一次性覆盖：忽略 spec 的 `gating:` 字段，直接进 P1。spec 文件不动 |
+| 已经手动做完 P1/P2，要 longtask 从 P3 接手 | `/longtask spec.md --from P3` | 隐含 `--skip-gating`。P3 之前的 phase 在状态文件里写为 `SKIPPED`（无 commit sha、无轮数）。P3 当作起始 phase 跑 |
+| 续接昨天 BLOCKED 的运行 | `/longtask spec.md --resume` | 读 `.longtask/state/<spec>.json`，跳过 PASS 的 phase。如果状态里有 `gating_cleared_at`，gating 也跳 |
 
-**`--from <Pn>` does NOT verify that earlier phases' outputs are actually present.** You're
-asserting "P1 and P2 are done"; if they aren't, Codex A on P3 will likely fail verification
-and fall into the normal retry/escalate flow. Combine with a sanity test (e.g. run the
-spec's verify_cmd for P2 manually first) before using `--from`.
+**`--from <Pn>` 不验证之前 phase 的 outputs 是否真的存在**。你在断言"P1 / P2 已经做完"；如果其实没做完，Codex A 在 P3 大概率会 verify 失败，进入正常的 retry / escalate 流程。配合用法：先手动跑一下 P2 的 verify_cmd 确认通过，再 `--from P3`。
 
-Combine flags where useful:
+可以组合 flag：
 
 ```bash
-# spec was carefully reviewed already; jump straight in but with state tracking
+# spec 已经精心 review 过；直接跑但保留状态追踪
 /longtask spec.md --skip-gating
 
-# I manually finished P1 and P2; pick up at P3 fresh
+# P1 / P2 我手动做完了；从 P3 开干
 /longtask spec.md --from P3
 
-# resumed yesterday's run; if the state already has P3 as PASS, advance to P4
+# 接昨天的运行；如果状态显示 P3 已 PASS，自动跳到 P4
 /longtask spec.md --from P3 --resume
 ```
 
 ---
 
-## Relationship to Superpowers / GSD / the three-stack workflow
+## 与 Superpowers / GSD / 三栈工作流的关系
 
-`longtask` is **not** a dependency of [Superpowers](https://github.com/obra/superpowers)
-or [GSD (get-shit-done)](https://github.com/gsd-build/get-shit-done), and neither tool
-depends on `longtask`. The only Claude-Code skill `longtask` calls out to is
-[gstack](https://github.com/garrytan/gstack), and only when you opt in via the spec's
-`gating:` / `ship:` fields. Everything else is independent.
+`longtask` **不依赖** [Superpowers](https://github.com/obra/superpowers) 或 [GSD (get-shit-done)](https://github.com/gsd-build/get-shit-done)，反过来这两者也不依赖 `longtask`。`longtask` 唯一会主动调用的外部 Claude Code skill 是 [gstack](https://github.com/garrytan/gstack)，且只有当你在 spec 里 opt-in 写了 `gating:` / `ship:` 字段时才调。其他一切都是独立的。
 
-That said, the four projects share intellectual ancestry. Each owns a different layer:
+但这四个项目方法论同源，分别占据不同层：
 
-| Layer | Tool | What it owns |
-|-------|------|--------------|
-| Decisions / product planning | gstack `/office-hours`, `/plan-ceo-review`, `/plan-eng-review` | "Are we building the right thing?" |
-| Spec phasing | GSD `/gsd-discuss-phase`, `/gsd-plan-phase` | "How do we slice the work into context-safe chunks?" |
-| Execution discipline | Superpowers `/test-driven-development`, `/using-git-worktree`, `/subagent-driven-development` | "How do we write the code without skipping verification?" |
-| **Phase-level execution** | **`longtask`** (this skill) | "Run THIS spec, with strict A/B verifier separation, until each phase passes." |
-| Shipping | gstack `/ship`, Superpowers `/finishing-development-branch` | "Open the PR cleanly." |
+| 层 | 工具 | 解决的问题 |
+|---|---|---|
+| 决策 / 产品规划 | gstack `/office-hours`、`/plan-ceo-review`、`/plan-eng-review` | "我们要做的是不是对的事？" |
+| Spec 切阶段 | GSD `/gsd-discuss-phase`、`/gsd-plan-phase` | "怎么把活切成上下文安全的小块？" |
+| 执行纪律 | Superpowers `/test-driven-development`、`/using-git-worktree`、`/subagent-driven-development` | "怎么写代码而不跳过验证？" |
+| **Phase 级执行** | **`longtask`**（本 skill） | "把这份 spec 跑出来，每个 phase 都过严格的 A/B 验证。" |
+| 收尾发布 | gstack `/ship`、Superpowers `/finishing-development-branch` | "干净地把 PR 提了。" |
 
-`longtask` **internalizes** two of these ideas without calling the external tools:
+`longtask` **内化了**其中两条思想，不调用外部工具：
 
-- **GSD's "slice into phases"** — your spec already has P1/P2/P3, and each phase gets a
-  fresh sub-agent. You don't run GSD inside `/longtask`.
-- **Superpowers' "verify-first" discipline** — Codex B is a strict, fresh-context verifier
-  that judges artifacts against `verify_cmd`. You don't run Superpowers' TDD loop inside
-  `/longtask`.
+- **GSD 的"切阶段"** — spec 里已经有 P1 / P2 / P3，每个 phase 拉全新 sub-agent。你不会在 `/longtask` 里再跑 GSD。
+- **Superpowers 的"verify-first"纪律** — Codex B 是个严格的、全新上下文的验证者，必须按 `verify_cmd` 判定 artifact。你不会在 `/longtask` 里再跑 Superpowers 的 TDD loop。
 
-The integration points that `longtask` does expose are explicit and minimal: only `gating:`
-(pre-P1 decision skills) and `ship:` (post-Pn shipping). Both default to off.
+`longtask` 真正暴露的整合点显式而最小：只有 `gating:`（P1 之前的决策 skill）和 `ship:`（最后一个 phase 之后的发布）。两者默认关闭。
 
-### When to use what
+### 什么时候用什么
 
-- **No spec yet** → run gstack `/office-hours` + `/plan-ceo-review` + `/plan-eng-review`
-  (or GSD `/gsd-discuss-phase`) to think the design through, then write `spec.md`.
-  `longtask` does not help with the un-thought-through stage on purpose.
-- **Phasing is unclear** → GSD's phase-discussion flow is the right place; drop the
-  resulting structure into `spec.md` and run `/longtask`.
-- **Spec is finished, just execute it** → `longtask` is the executor. Use `--skip-gating`
-  if you already did the design work outside the skill.
-- **Want gating + shipping bundled** → `/longtask spec.md` with both `gating:` and `ship:`
-  declared.
+- **还没有 spec** → 用 gstack `/office-hours` + `/plan-ceo-review` + `/plan-eng-review`（或 GSD `/gsd-discuss-phase`）把设计想清楚，然后写 `spec.md`。`longtask` 故意不解决"设计还没想清楚"这个阶段。
+- **阶段切分不明确** → GSD 的 phase-discussion 流程最合适；把切好的结构落到 `spec.md` 里，再 `/longtask`。
+- **spec 已写好、只想执行** → `longtask` 就是执行器。如果设计工作已经在 skill 之外做完，加 `--skip-gating`。
+- **想把 gating + shipping 打包成一条命令** → `/longtask spec.md`，spec 里同时写 `gating:` 和 `ship:`。
 
-### Do I need all four on the same machine?
+### 一台机器上四个全装吗？
 
-If you're doing greenfield product work and want the YouTube-demoed
-"Claude-headless + Ralph-Loop" 16-step pipeline, yes — Superpowers + GSD + gstack +
-`longtask` cover the full Think → Plan → Execute → Ship arc.
+如果你做绿地产品、想跑 YouTube 演示里那套"Claude-headless + Ralph-Loop"16 阶段流水线 → 装齐 Superpowers + GSD + gstack + `longtask`，覆盖 Think → Plan → Execute → Ship 全弧线。
 
-If you already have a workflow you trust and `longtask` alone covers it, no — the four
-stacks are complementary, not required together. They live in different skill
-namespaces and don't compete for the same trigger words.
+如果你已经有一套靠谱的工作流、`longtask` 单装就够 → 不必都装。这四套互补但不强依赖，它们在不同 skill 命名空间，触发词不冲突。
 
 ---
 
-## Hang protection: idle timeout + verifier integrity check
+## 假死防护：idle timeout + verifier 一致性检查
 
-Two failure modes show up after enough production use, both worth understanding
-before they bite:
+生产环境用了一段时间后，会冒出两种失败模式，提前理解很必要：
 
-**1. Verifier inconsistency** — Codex B occasionally returns `verdict: "FAIL"`
-while every entry in `dod_results[*].passed` is `true` (or the inverse). The
-verdict and the AC list contradict each other. This is almost always a sign
-that `verify_passes_when` is poorly worded, not that the code is wrong; the next
-retry round generates more of the same contradiction.
+**1. Verifier 不一致** — Codex B 偶尔返回 `verdict: "FAIL"` 但 `dod_results[*].passed` 全是 `true`（或者相反）。verdict 和 AC 列表自相矛盾。这几乎总是 `verify_passes_when` 写得不够明确，而不是代码错——下一轮 retry 只会复制同样的矛盾。
 
-The sub-agent now runs an integrity check on B's JSON before trusting the
-verdict. Any of these mismatches **immediately ESCALATE** — no retries spawned:
+Sub-agent 现在在收到 B 的 JSON 之后、信任 verdict 之前先跑一致性检查。任何下列矛盾**立即 ESCALATE**，**不再 spawn retry**：
 
 - `VERIFIER_INCONSISTENT_FAIL_BUT_AC_PASS`
 - `VERIFIER_INCONSISTENT_PASS_BUT_AC_FAIL`
-- `VERIFIER_MALFORMED_OUTPUT` (missing or empty `dod_results`)
+- `VERIFIER_MALFORMED_OUTPUT`（`dod_results` 缺失或为空）
 
-The escalation report includes B's full JSON so you can decide whether to
-tighten `verify_passes_when`, rewrite the offending DoD bullet, or relax
-`verify_cmd`.
+升级报告附 B 的完整 JSON，让你直接判断是该收紧 `verify_passes_when`、重写出错的 DoD 条目，还是放宽 `verify_cmd`。
 
-**2. Sub-agent silent hang** — between Codex CLI calls the sub-agent runs its
-own Bash + reasoning steps. Without a watchdog, a stuck sub-agent can sit idle
-for an hour while every individual `codex exec` invocation has long since
-finished or timed out. The new `idle_timeout_minutes` field (default **10**)
-puts a heartbeat-based watchdog in place:
+**2. Sub-agent 静默假死** — 两次 Codex CLI 调用之间，sub-agent 跑自己的 Bash + reasoning 步骤。如果没看门狗，一个卡住的 sub-agent 可以静坐一小时——而每次 `codex exec` 自己早已超时退出。新的 `idle_timeout_minutes` 字段（默认 **10**）放了一个**心跳式**看门狗：
 
-- Every progress boundary (round start, Codex A start/done, Codex B start/done,
-  commit, BLOCKED return) writes a heartbeat to
-  `.longtask/state/<spec>.json` under `phases.<Pn>.last_heartbeat` plus the
-  `heartbeats[]` audit trail.
-- At every round transition the sub-agent checks `now - last_heartbeat`. If
-  the gap exceeds `idle_timeout_minutes`, it returns
-  `BLOCKED reason="IDLE_TIMEOUT"` immediately, attaching the heartbeat tail.
-- This is an **idle** timeout, not a hard wall clock. As long as the sub-agent
-  keeps emitting progress (one heartbeat per round transition), the timer
-  resets. Real long work renews itself; only true hangs trip the watchdog.
+- 每个 progress 边界（round 开始、Codex A 开始/完成、Codex B 开始/完成、commit、BLOCKED 返回）都写一个心跳到 `.longtask/state/<spec>.json` 的 `phases.<Pn>.last_heartbeat`，并 append 到 `heartbeats[]` 审计轨迹。
+- 每个 round transition 时 sub-agent 检查 `now - last_heartbeat`。超出 `idle_timeout_minutes` → 立刻 `BLOCKED reason="IDLE_TIMEOUT"`，附 heartbeat 尾。
+- 这是 **idle 超时，不是硬 wall clock**。只要 sub-agent 持续输出 progress（每个 round transition 一次心跳），计时器就 reset。真正在工作就一直续命；只有真正卡死才被杀。
 
-The default 10 minutes is deliberately tight — long-running Codex executions
-themselves are already capped at 30 min by `timeout 1800`, so the only thing
-that should ever exceed 10 minutes between heartbeats is a stuck sub-agent.
-Bump per phase only when you observe a real reason to.
+默认 10 分钟是有意收紧的——长跑的 Codex 本身已经被 `timeout 1800` 兜底（30 min 上限），所以两次心跳之间唯一会超过 10 分钟的，就是卡死的 sub-agent。只在确有需要时按 phase override：
 
 ```yaml
-# spec phase override
-idle_timeout_minutes: 20   # only if you've measured a legitimate need
+# spec phase 覆盖
+idle_timeout_minutes: 20   # 仅当确实测出合理需要
 ```
 
-When `IDLE_TIMEOUT` triggers, the report's `heartbeats[]` tail tells you
-exactly where the gap opened (between which two events). That's almost always
-enough to diagnose whether the spec needs a fix or a simple `--resume` is safe.
+`IDLE_TIMEOUT` 触发时，报告里的 `heartbeats[]` 尾巴会告诉你卡在哪两个事件之间。这一信息基本足够你判断是改 spec 还是直接 `--resume`。
 
 ---
 
-## Cost & rate limits
+## 成本 & 速率限制
 
-- Each phase typically runs 1–3 Codex A↔B rounds; each round is 2 `codex exec` calls.
-- A 5-phase spec on a small refactor commonly burns 10–30 GPT-5.5 xhigh calls.
-- Each phase optionally caps at `cost_budget_usd` (sub-agent stops + asks if exceeded).
-- Codex A and B are wrapped in `timeout 1800` (30 min). Exit 124 → counts as one FAIL
-  round.
-- The Claude orchestrator stays at minimal context (only sees sub-agent return messages),
-  so opus token burn on the orchestrator side is small relative to Codex spend.
+- 每个 phase 通常跑 1–3 轮 Codex A↔B；每轮 = 2 次 `codex exec`。
+- 一份 5-phase 的中等重构 spec 通常烧 10–30 次 GPT-5.5 xhigh 调用。
+- 每个 phase 可设 `cost_budget_usd` 上限（超出后 sub-agent 停下来问你）。
+- Codex A / B 都包了 `timeout 1800`（30 分钟）。Exit 124 → 算一次 FAIL。
+- Orchestrator 上下文极小（只看 sub-agent 返回值），所以 opus 那一侧的 token 消耗相对 Codex 那侧很少。
 
-If you're cost-sensitive, drop `model_reasoning_effort` from `xhigh` to `high` or `medium`
-in `SKILL.md`'s Codex invocation section.
+如果想压成本，把 `SKILL.md` Codex invocation 段里的 `model_reasoning_effort` 从 `xhigh` 降到 `high` 或 `medium`。
 
 ---
 
-## Status
+## 状态
 
-- Active personal skill, evolving in production use.
-- Quality bar (codified in `SKILL.md`): **simplicity beats cleverness · evals before
-  optimization · tight iteration over big leaps · taste is part of "shippable"**.
-- Public, but personal — issues / PRs welcome but no SLA on response.
+- 个人在用的 active skill，在生产场景持续迭代。
+- 质量底线（写在 `SKILL.md` 里）：**简单胜过聪明 · 度量先于优化 · 小步快跑胜过一锤定音 · 品味是"shippable"的一部分**。
+- 公开仓库，但是个人项目 — issues / PR 欢迎，但响应没有 SLA。
 
 ---
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — 见 [`LICENSE`](LICENSE)。

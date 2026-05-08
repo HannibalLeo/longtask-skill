@@ -198,6 +198,37 @@ state-file format, resume rules (`/longtask <spec> --resume`), and roadmap.
 
 ---
 
+## Already have a design doc? Start later in the pipeline
+
+Three common cases when the spec is already mature and you want to skip the front matter:
+
+| You have... | Run | What it does |
+|---|---|---|
+| A spec, no decision review needed | `/longtask spec.md` (with `gating:` omitted from the spec) | P1→Pn directly, no gating loop. |
+| A spec WITH `gating:` declared, but you've already done the design work elsewhere | `/longtask spec.md --skip-gating` | One-shot override: ignore the spec's `gating:` field, jump to P1. Spec stays unchanged. |
+| Already implemented P1/P2 by hand, want longtask to drive from P3 onward | `/longtask spec.md --from P3` | Implies `--skip-gating`. Phases before P3 are written as `SKIPPED` in the state file (no commit sha, no rounds). P3 runs as if it were the entry phase. |
+| Resuming a previously-blocked run | `/longtask spec.md --resume` | Reads `.longtask/state/<spec>.json`. Skips PASS phases. If state has `gating_cleared_at`, gating is also skipped. |
+
+**`--from <Pn>` does NOT verify that earlier phases' outputs are actually present.** You're
+asserting "P1 and P2 are done"; if they aren't, Codex A on P3 will likely fail verification
+and fall into the normal retry/escalate flow. Combine with a sanity test (e.g. run the
+spec's verify_cmd for P2 manually first) before using `--from`.
+
+Combine flags where useful:
+
+```bash
+# spec was carefully reviewed already; jump straight in but with state tracking
+/longtask spec.md --skip-gating
+
+# I manually finished P1 and P2; pick up at P3 fresh
+/longtask spec.md --from P3
+
+# resumed yesterday's run; if the state already has P3 as PASS, advance to P4
+/longtask spec.md --from P3 --resume
+```
+
+---
+
 ## Cost & rate limits
 
 - Each phase typically runs 1–3 Codex A↔B rounds; each round is 2 `codex exec` calls.

@@ -125,7 +125,7 @@ Each spec run writes `.longtask/state/<spec_basename>.json` (repo root, or `~/.l
 }
 ```
 
-`gating_cleared_at` is set on first gating success; absence means gating still pending. `ship_status` is omitted entirely when `ship: false` — its presence flags that ship was attempted at least once.
+`gating_cleared_at` is set on first gating success; absence means gating still pending. `ship_status` is omitted entirely when `ship: false` — its presence flags that ship was attempted at least once. Phase `status` enum: `PENDING | PASS | FAIL | BLOCKED | SKIPPED`. `SKIPPED` is written by `--from <Pn>` for every phase before `<Pn>` (no `commit` field, no rounds counted).
 
 - `/longtask <spec>` (no flag) + state exists → ask user **resume** (skip PASS) vs **restart** (clear state).
 - `/longtask <spec> --resume` → silent resume from first non-PASS.
@@ -150,10 +150,31 @@ timeout 1800 codex exec --skip-git-repo-check \
 
 `codex exec` is one-shot stateless. Sub-agent rebuilds A's "context" between rounds by prepending prior diff + B's JSON verdict.
 
+## CLI flags
+
+`/longtask <spec> [flags]` — flags are parsed in step 1 and override behavior:
+
+| Flag | Effect |
+|------|--------|
+| (none) | Run gating loop if declared, then phases P1→Pn, then ship if declared. |
+| `--resume` | Read existing state file. Skip phases already marked `PASS`. If state has `gating_cleared_at`, skip gating loop too. |
+| `--skip-gating` | One-shot: ignore the spec's `gating:` field entirely, jump to phase loop. Useful when the design work was already done outside `/longtask`. |
+| `--from <Pn>` | Start the phase loop at `<Pn>` instead of P1. **Implies `--skip-gating`** — once you start mid-spec, gating is by definition behind you. The phases before `<Pn>` are NOT run; their state is left untouched. |
+
+Combine where it makes sense:
+- `--from P3 --resume` — start at P3, but if state shows P3 already PASS, advance to P4.
+- `--skip-gating` alone — gating skip but start at P1 normally.
+- `--from P3` alone — gating skip + jump straight to P3 from a clean slate (state file written from this point onward).
+
+`--from <Pn>` does NOT validate that earlier phases' `outputs` exist. The user is asserting "those preconditions are already in place"; if they aren't, Codex A will likely fail verification on `<Pn>` and the normal retry/escalate flow takes over.
+
 ## Main Orchestrator behavior
 
-1. Read **only** the spec file. Validate schema. Invalid → STOP and report.
-1.5. **Gating** (skip if `gating:` is omitted, empty, or this is a `--resume` of a run that already cleared gating):
+1. Read **only** the spec file. Parse CLI flags (`--resume`, `--skip-gating`, `--from <Pn>`).
+   Validate schema. Invalid → STOP and report. If `--from <Pn>` references a phase not in
+   the spec → STOP and report.
+1.5. **Gating** (skip if ANY of: `gating:` is omitted/empty; `--skip-gating` set; `--from`
+   set; `--resume` of a run whose state has `gating_cleared_at`):
    a. For each skill name in `gating` list, in order: invoke via the Skill tool.
    b. Surface the skill's output to the user. **Wait** for explicit confirmation
       ("ok proceed", "继续", "go ahead", or equivalent) before invoking the next gate.
@@ -162,13 +183,18 @@ timeout 1800 codex exec --skip-git-repo-check \
    d. After ALL gates clear, record `{ "gating_cleared_at": "<iso8601>" }` in the
       state file so subsequent `--resume` skips the gating loop.
 2. Check `.longtask/state/<spec_basename>.json`. Decide resume vs restart per rules above.
-3. For each non-PASS phase Pn in order:
+   If `--from <Pn>` set and no state file exists, create one with phases before `<Pn>`
+   marked `SKIPPED` (status only, no commit sha). If state exists and `--from <Pn>`
+   requests a phase already marked PASS, advance to the first non-PASS phase ≥ `<Pn>`
+   (when combined with `--resume`) or warn + restart from `<Pn>` (when `--resume` absent).
+3. For each non-PASS phase Pn in order **starting from the start phase** (P1 by default,
+   `<Pn>` if `--from <Pn>`):
    a. Spawn sub-agent (Agent tool, opus, fresh context). Pass Sub-Agent Prompt with `{Pn}`, `{spec_path}`, `{state_path}` substituted.
    b. Wait. Sub-agent returns `DONE` | `BLOCKED` | `ESCALATE` + structured report.
    c. On `DONE`: discard sub-agent. Update state file. Move to Pn+1.
    d. On `BLOCKED` / `ESCALATE`: surface structured report to human. Await direction.
 4. All phases DONE:
-   a. Print summary table (phase / commit / duration).
+   a. Print summary table (phase / commit / duration). Mark SKIPPED phases explicitly.
    b. **Shipping** (skip if `ship:` is omitted or false): invoke `gstack /ship` via the
       Skill tool. The skill handles base-branch detection, tests, VERSION bump,
       CHANGELOG update, push, PR creation. Failures inside `/ship` do NOT roll back

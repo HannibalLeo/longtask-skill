@@ -1,5 +1,7 @@
 # longtask — Spec-Driven Multi-Phase Execution Skill for Claude Code
 
+**English** · [简体中文](README.zh-CN.md)
+
 A Claude Code skill that turns a phased spec file into an autonomous execution pipeline.
 Each phase runs an ephemeral sub-agent that drives **Codex A (executor) ↔ Codex B (verifier)**
 with fresh context and structured PASS/FAIL verdicts — up to N fix→verify rounds, then

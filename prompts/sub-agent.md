@@ -41,22 +41,29 @@ Procedure:
    prompt:
    a. Load the skeleton from `prompts/codex-a.md`. For N≥2 prepend
       `prompts/codex-a-retry.md` (filled with prior round's B JSON + diff).
-   b. **Auto-inject project context docs** — for each convention path in the
-      table at SKILL.md `## Project-specific tuning`:
-      - check existence under repo root
-      - if it's an "always" convention (CODEX_PROTOCOL / SECURITY_RULES) → inject
-      - if it's scope-filtered (DESIGN_SYSTEM / API_CONVENTIONS / DATA_CONTRACT)
-        → match the phase's `file_scope` globs against the convention's
-        `when_file_scope_matches` patterns; inject only if any path in
-        `file_scope` matches any convention pattern
+   b. **Auto-inject project context docs** — for each convention path in
+      the table at SKILL.md `## Project-specific tuning`:
+      - check existence under repo root; if missing, skip (no error)
+      - **CODEX_PROTOCOL.md is the only universal entry** — inject if it
+        exists, regardless of phase scope
+      - all other entries are scope-filtered: match the phase's `file_scope`
+        globs against the convention's `when_file_scope_matches` patterns;
+        inject only if at least one path in `file_scope` matches at least
+        one convention pattern. If `file_scope` is `[]` (rare — meta phase),
+        no scope-filtered convention is injected
       Apply `inject_context:` overrides from spec frontmatter:
-        - `always:` paths added to the always set
-        - `when_scope_matches:` patterns extend the scope-filter table
-        - `exclude:` paths removed from the resolved set
+        - `always:` paths added unconditionally (for the rare cross-cutting
+          case the convention table doesn't cover)
+        - `when_scope_matches:` patterns extend the scope-filter table for
+          this run
+        - `exclude:` paths removed from the resolved set even if convention
+          or `always:` would have included them
       Read each resolved file in full. Prepend them to the Codex A prompt
-      under a single `### Project context (auto-injected)` header, with each
-      file labelled by its source path. Order: always-injected first, then
-      scope-injected. Empty resolved set → skip the header entirely.
+      under a single `### Project context (auto-injected)` header, with
+      each file labelled by its source path. Order: CODEX_PROTOCOL first
+      (if present), then scope-filtered matches in convention-table order,
+      then `inject_context.always` paths. Empty resolved set → skip the
+      header entirely.
    c. Print "🔧 {Pn} round {N}/{max} · Codex A executing" and heartbeat
       `round-N-codex-a-start`.
 

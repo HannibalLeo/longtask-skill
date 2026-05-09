@@ -441,13 +441,16 @@ Sub-agent automatically discovers project-level convention documents and injects
 
 | Path | Injected into Codex A when … | Purpose |
 |---|---|---|
-| `docs/CODEX_PROTOCOL.md` | always | Project standing rules / known traps (e.g. "avoid nested ssh+heredoc", vendor patch policy) |
-| `docs/SECURITY_RULES.md` | always | Cross-cutting security constraints (secret handling, auth invariants, data-loss paths) |
+| `docs/CODEX_PROTOCOL.md` | any phase | The document's content is **about codex invocation itself** (vendor patch policy, "avoid nested ssh+heredoc", spec-author tips). Every codex call is a relevant scope by definition. This is the only "always" entry — it earns it semantically, not by privilege. |
 | `docs/DESIGN_SYSTEM.md` | phase `file_scope` matches `**/frontend/**`, `**/web/**`, `**/views/**`, `**/components/**` | Visual / UI style guide (tokens, component whitelist, anti-patterns) |
 | `docs/API_CONVENTIONS.md`, `docs/API_CONTRACT.md` | phase `file_scope` matches `**/api/**`, `**/gateway/**`, `**/routers/**`, `**/schemas/**` | API shape, status codes, error envelope, versioning |
 | `docs/DATA_CONTRACT.md` | phase `file_scope` matches `**/models/**`, `**/migrations/**`, `**/schemas/**`, `**/db/**` | Data model invariants, migration rules, FK constraints |
+| `docs/SECURITY_RULES.md` | phase `file_scope` matches `**/auth/**`, `**/credential*`, `**/payments/**`, `**/secrets/**`, `**/login/**`, `**/permission*` | Security constraints (secret handling, auth invariants, authorization paths). NOT always-injected — algo / ML / pure-frontend phases rarely touch these surfaces |
+| `docs/ALGO_RULES.md` | phase `file_scope` matches `**/algo*/**`, `**/ml/**`, `**/inference/**`, `**/training/**` | Algorithm / ML rules (model versioning, inference contract, training data policies) |
 
-The sub-agent reads each existing file in full and prepends them to the Codex A prompt under a `### Project context (auto-injected)` header, with the source path labelled per file. Codex A treats them as binding constraints, same priority as the spec's `do_not_touch` / `verify_passes_when`.
+**Why scope-filter everything except CODEX_PROTOCOL.** Each convention doc applies to a specific surface. Frontend phases don't need DATA_CONTRACT; algo phases don't need SECURITY_RULES; backend phases don't need DESIGN_SYSTEM. Always-injecting them wastes tokens and adds noise that can confuse Codex A. CODEX_PROTOCOL is the lone exception because its subject IS the codex call itself — the scope match is "any codex invocation".
+
+The sub-agent reads each matched file in full and prepends them to the Codex A prompt under a `### Project context (auto-injected)` header, with the source path labelled per file. Codex A treats them as binding constraints, same priority as the spec's `do_not_touch` / `verify_passes_when`.
 
 **Per-spec override** when convention defaults don't fit (rare):
 

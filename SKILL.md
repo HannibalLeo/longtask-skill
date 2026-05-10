@@ -71,6 +71,43 @@ for risky phases:
 Do not run every phase at `gpt-5.5` + `high/xhigh` by habit. High reasoning is
 an escalation tool, not the baseline.
 
+## Decision Gate
+
+Long tasks often block on choices that do not truly need the human: "which
+approach should we take?", "should we patch locally or refactor?", "which API
+pattern is current?", "is this design compromise acceptable?". Treat these as a
+structured decision point before asking the user.
+
+Worker/verifier agents may return a decision report with 2-4 options. The parent
+then runs a Decision Gate:
+
+1. **Classify risk.** Auto-decide only if the change is local, reversible, within
+   spec, and has a clear verification path.
+2. **Gather evidence.** Use repository evidence first. If the choice depends on
+   current SDK/API/framework behavior, search official docs, release notes, or
+   upstream issues before judging.
+3. **Review with lenses.** Use `prompts/decision-review.md` to evaluate:
+   complete problem solving, evidence/evals, engineering fit, product fit,
+   design fit, and external truth.
+4. **Escalate selectively.** Use `xhigh` plus CEO/Eng/Design-style review only
+   when the decision has product scope impact, irreversible data behavior,
+   security/data-loss risk, or confidence is below threshold.
+5. **Proceed or ask.** If confidence is at least `0.72` and there is no veto,
+   choose the option and pass concrete follow-up instructions to the next
+   worker. Otherwise ask the human with the narrowed options.
+
+The CEO/Eng/Design lenses are not separate mandatory agents for every choice:
+
+- **CEO lens:** Does this solve the user's real problem and preserve product
+  value?
+- **Engineering lens:** Is it correct, maintainable, scoped, and testable?
+- **Design lens:** Does it preserve coherent user workflows and interface
+  behavior?
+
+Use the Karpathy-style production bar as the tie-breaker: simplicity, evals,
+tight iteration, and taste. Prefer the smallest complete, verifiable solution.
+Do not choose the smallest patch that merely gets past the current failure.
+
 ## Spec Schema
 
 Top-level frontmatter is optional:
@@ -130,6 +167,8 @@ For each phase:
    - require its final message to be the worker JSON described in
      `prompts/worker.md`; `BLOCKED_*` stops the phase
 3. Wait for the worker.
+   - If the worker returns `decision_options`, run the Decision Gate before
+     asking the user or retrying.
 4. Parent runs a lightweight hard gate:
    - `git status --porcelain=v1`
    - `git diff --name-only HEAD`
@@ -166,6 +205,10 @@ For each phase:
 For high-risk phases, spawn a second verifier before commit using the
 quality/security verifier role from the model policy. Commit only if both
 verifiers pass.
+
+If a decision review chooses an option, record the decision JSON at
+`.longtask/reports/<spec>/<Pn>-decision-r<N>.json` and include its follow-up
+instructions in the next worker prompt.
 
 State should record native evidence, not just phase names:
 
@@ -254,7 +297,9 @@ Use fallback only when:
 | `prompts/retry-worker.md` | Retry worker prefix |
 | `prompts/verifier.md` | Verifier subagent contract |
 | `prompts/conductor.md` | Parent conductor checklist |
+| `prompts/decision-review.md` | Decision Gate reviewer prompt |
 | `schemas/verifier-result.schema.json` | Verifier JSON contract |
+| `schemas/decision-review.schema.json` | Decision Gate JSON contract |
 | `lib/longtask-runner.py` | Deprecated fallback runner for CI/CLI |
 | `lib/codex-wrapper.sh` | Deprecated fallback wrapper for CI/CLI |
 

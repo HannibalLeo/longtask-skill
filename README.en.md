@@ -47,6 +47,27 @@ The parent keeps low context: spec, state, changed file list, diff stat,
 verifier JSON, blocked reports, and commit list. Full source files and large
 diffs are loaded only for debugging.
 
+## Decision Points
+
+Long tasks often hit branches such as "which approach should we take?" Longtask
+does not automatically ask the human for every branch, and it does not spend the
+most expensive model on every choice.
+
+Workers or verifiers can return 2-4 options. The parent runs a Decision Gate:
+
+1. Check whether the choice is local, reversible, inside the spec, and
+   mechanically verifiable.
+2. Use repository evidence first; when the choice depends on current SDK/API or
+   framework behavior, check official docs, release notes, or upstream issues.
+3. Evaluate through product, engineering, and design lenses.
+4. If confidence is high and no veto applies, choose an option and pass concrete
+   follow-up instructions to the next worker.
+5. Ask the human only for product scope changes, irreversible data behavior,
+   security risk, or low confidence.
+
+High-risk decisions can escalate to `xhigh` and CEO/Eng/Design-style review.
+Routine implementation branches use the structured rubric first.
+
 ## Roles
 
 | Role | Responsibility |
@@ -152,6 +173,8 @@ python3 ~/.codex/skills/longtask/lib/longtask-runner.py path/to/spec.md --repo .
 | `prompts/worker.md` | Worker subagent prompt |
 | `prompts/retry-worker.md` | Retry worker prompt |
 | `prompts/verifier.md` | Verifier subagent prompt |
+| `prompts/decision-review.md` | Decision gate prompt |
 | `schemas/verifier-result.schema.json` | Verifier output schema |
+| `schemas/decision-review.schema.json` | Decision gate output schema |
 | `lib/longtask-runner.py` | CLI fallback runner |
 | `lib/codex-wrapper.sh` | CLI fallback wrapper |

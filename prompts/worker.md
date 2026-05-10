@@ -32,6 +32,14 @@ Do not revert unrelated changes. Accommodate existing worktree state.
   "tests_run": ["command"],
   "blocked_reason": "",
   "needed_paths": [],
+  "decision_options": [
+    {
+      "id": "A",
+      "summary": "optional when blocked on a choice",
+      "tradeoffs": ["cost", "risk"],
+      "recommended": false
+    }
+  ],
   "risks": []
 }
 ```

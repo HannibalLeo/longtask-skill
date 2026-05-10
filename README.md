@@ -35,6 +35,20 @@
 
 主会话保持低上下文：正常只看 spec、状态文件、改动文件列表、diff stat、verifier JSON、blocked report 和 commit 列表。完整源码和大 diff 只在故障排查时读取。
 
+## 决策点处理
+
+执行中经常会出现“有几个方案，应该选哪个”的分叉。`longtask` 不会默认把这些都抛给人，也不会每次都启用最贵模型。
+
+worker 或 verifier 可以返回 2-4 个候选方案。主会话会先做 Decision Gate：
+
+1. 看这个选择是否局部、可逆、在 spec 范围内，并且能被测试验证。
+2. 优先使用仓库里的证据；如果涉及当前 SDK/API/框架行为，再查官方文档、release notes 或上游 issue。
+3. 用产品、工程、设计三个视角评估方案。
+4. 置信度足够且没有 veto 时自动选择，并把具体 follow-up 交给下一轮 worker。
+5. 只有产品范围变化、不可逆数据行为、安全风险、低置信度时才问人。
+
+高风险决策可以升级到 `xhigh` 和 CEO/Eng/Design 风格评审。普通实现分叉优先用结构化 rubric 自动裁决。
+
 ## 角色分工
 
 | 角色 | 职责 |
@@ -129,6 +143,8 @@ python3 ~/.codex/skills/longtask/lib/longtask-runner.py path/to/spec.md --repo .
 | `prompts/worker.md` | worker subagent prompt |
 | `prompts/retry-worker.md` | retry worker prompt |
 | `prompts/verifier.md` | verifier subagent prompt |
+| `prompts/decision-review.md` | decision gate prompt |
 | `schemas/verifier-result.schema.json` | verifier 输出 schema |
+| `schemas/decision-review.schema.json` | decision gate 输出 schema |
 | `lib/longtask-runner.py` | CLI fallback runner |
 | `lib/codex-wrapper.sh` | CLI fallback wrapper |

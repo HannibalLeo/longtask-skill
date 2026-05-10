@@ -38,26 +38,45 @@ Use explicit reasoning choices:
 Prefer two independent `medium` verifier passes over one `xhigh` verifier for
 risky phases.
 
+## Decision Gate
+
+When a worker/verifier returns a choice instead of a clear PASS/FAIL:
+
+1. Require a compact decision report with 2-4 options.
+2. Use repo evidence first.
+3. Search official docs/release notes/upstream issues when the choice depends on
+   current external behavior.
+4. Run `prompts/decision-review.md`.
+5. Validate the decision against `schemas/decision-review.schema.json`.
+6. Auto-choose only when `confidence >= 0.72` and `decision == CHOOSE_OPTION`.
+7. Ask the human only for `ASK_HUMAN`, `STOP_UNSAFE`, irreversible behavior,
+   product-scope changes, or low confidence.
+
+Use xhigh + CEO/Eng/Design-style review only for high-risk or low-confidence
+decisions. Do not spend that budget on routine implementation choices.
+
 ## Per Phase
 
 1. Parse the phase block and validate required fields.
 2. Spawn one worker subagent with `prompts/worker.md`.
 3. Wait for the worker.
-4. Run git hard gates:
+4. If worker returns `decision_options`, run the Decision Gate and either pass
+   the chosen follow-up to a retry worker or stop for human input.
+5. Run git hard gates:
    - `git status --porcelain=v1`
    - `git diff --name-only HEAD`
    - reject paths outside `file_scope`
    - reject paths inside `do_not_touch`
-5. Spawn one fresh verifier subagent with `prompts/verifier.md`.
-6. Wait for verifier JSON.
-7. Extract exactly one JSON object from the verifier final message, validate it
+6. Spawn one fresh verifier subagent with `prompts/verifier.md`.
+7. Wait for verifier JSON.
+8. Extract exactly one JSON object from the verifier final message, validate it
    against `schemas/verifier-result.schema.json`, and write it to
    `.longtask/reports/<spec>/<Pn>-r<N>-verdict.json`.
-8. Confirm verifier did not mutate the worktree.
-9. PASS only when verifier JSON, `verify_cmd_exit`, DoD bullets, and
+9. Confirm verifier did not mutate the worktree.
+10. PASS only when verifier JSON, `verify_cmd_exit`, DoD bullets, and
    reward-hacking checks all pass.
-10. Commit only changed phase files.
-11. Retry with `prompts/retry-worker.md` until `max_retry_rounds`; then write a
+11. Commit only changed phase files.
+12. Retry with `prompts/retry-worker.md` until `max_retry_rounds`; then write a
     blocked report and stop.
 
 ## Resume

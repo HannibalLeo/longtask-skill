@@ -1,40 +1,59 @@
 # longtask
 
-Codex 原生长任务 skill：给一份写好的分阶段 spec，由主会话作为 conductor，
-按 phase 调度 native subagents 做实现和独立验证。目标是无人值守完成，而不是
-“模型试着做了一下”。
+`longtask` 是一个 Codex 原生 skill，用来执行已经写好的分阶段 spec。
 
-`codex exec` runner 只保留为 CI/CLI fallback，不是 Codex app 默认路径。
+它适合这样的任务：你已经把需求拆成 `P1`、`P2`、`P3` 等阶段，希望 Codex 在较少人工干预的情况下持续推进，实现每个阶段、独立验证、提交可恢复的阶段结果，并在风险变高时停下来给出证据。
 
-## 默认路径：native subagents
+它的目标不是“让模型尽量做一下”，而是把长任务变成一条有边界、有验证、有恢复点的执行流水线。
 
-每个 phase：
+## 它解决什么问题
 
-1. 主会话读取 spec phase 和 `.longtask/state/<spec>.json`。
-2. 主会话 spawn 一个 worker subagent，使用 `prompts/worker.md`。
-3. worker 只改 `file_scope`，不 stage、不 commit。
-4. 主会话用 git 做硬门禁：changed files 必须在 `file_scope` 内，且不在
-   `do_not_touch` 内。
-5. 主会话 spawn 一个 fresh verifier subagent，使用 `prompts/verifier.md`。
-6. verifier 只验证，不修改文件，返回符合 schema 的 JSON。
-7. PASS 后主会话只提交本 phase changed files。
-8. FAIL 则用 `prompts/retry-worker.md` 派下一轮 worker。
+普通长任务容易失败在几个地方：
 
-主会话保持低上下文：正常只看 spec、state、changed files、diff stat、
-verifier JSON、blocked report 和 commit 列表。
+- 主会话上下文越来越大，后面判断质量下降。
+- 实现和验证混在同一个上下文里，模型容易自证正确。
+- 阶段之间没有明确提交点，失败后很难恢复。
+- 测试绿了，但实际改动越界、弱化测试或破坏整体流程。
 
-默认不要让所有子 agent 继承高推理档位。推荐 worker/verifier 用 `medium`，
-重复失败或 final reviewer 再升到 `high`；`xhigh` 只用于反复 BLOCKED、安全或
-数据丢失风险。高风险 phase 优先跑两个独立 `medium` verifier，而不是一个
-`xhigh` verifier。
+`longtask` 的设计是让主会话只做调度和门禁，把重上下文工作交给新的子 agent。每个阶段都要通过 git 范围检查、独立 verifier、测试命令和最终整体验证。
 
-## Spec 最小格式
+## 工作方式
+
+默认路径是 Codex native subagents，不是 `codex exec`。
+
+一次 phase 的流程是：
+
+1. 主会话读取 spec 中的当前 phase。
+2. 主会话启动 worker subagent。
+3. worker 只在 `file_scope` 内实现代码，不提交。
+4. 主会话用 git 检查实际改动文件，拒绝越界改动。
+5. 主会话启动新的 verifier subagent。
+6. verifier 只验证，不修改代码，运行 `verify_cmd` 并返回结构化结果。
+7. 主会话校验 verifier 结果和工作区状态。
+8. 通过后，主会话只提交本 phase 的改动。
+9. 失败则把 verifier 证据交给下一轮 worker；超过重试次数后停止并写 blocked report。
+
+主会话保持低上下文：正常只看 spec、状态文件、改动文件列表、diff stat、verifier JSON、blocked report 和 commit 列表。完整源码和大 diff 只在故障排查时读取。
+
+## 角色分工
+
+| 角色 | 职责 |
+| --- | --- |
+| Conductor | 主会话。解析 spec、启动子 agent、做 git 门禁、提交、恢复。 |
+| Worker | 实现当前 phase。只改允许范围，不提交。 |
+| Verifier | 独立验证当前 phase。运行测试、检查 DoD、检查 reward-hacking。 |
+| Final reviewer | 多阶段全部完成后做整体风险审查。 |
+
+默认推理档位不追求越高越好：worker/verifier 通常用 `medium`；重复失败或最终审查再升到 `high`；`xhigh` 只用于反复 blocked、安全风险或数据丢失风险。
+
+## Spec 格式
+
+一个 spec 是普通 Markdown 文件。每个阶段用 `P1`、`P2` 这样的标题标记。
 
 ```markdown
 ---
 final_verify_cmd: "npm test && npm run build"
 final_smoke_cmd: "npm run test:e2e -- reading-room.spec.ts"
-# final_gate: none  # only when deliberately skipping final integration gate
 ---
 
 # P1: Add health endpoint
@@ -46,49 +65,70 @@ verify_passes_when: "exit 0 and health endpoint tests pass"
 max_retry_rounds: 3
 ```
 
-## Fallback runner
+必填字段：
 
-只在 native subagents 不可用、或用户明确要 CLI/CI 自动化时使用：
+- `goals`：这个阶段要完成什么。
+- `file_scope`：worker 允许修改的路径。
+- `do_not_touch`：绝对不能修改的路径。
+- `verify_cmd`：verifier 必须运行的命令。
+- `verify_passes_when`：验证通过的客观条件。
+
+最终阶段也需要整体验证。推荐提供 `final_verify_cmd` 或 `final_smoke_cmd`。如果你明确不需要最终验证，写 `final_gate: none`，否则 longtask 会把缺失 final gate 视为风险。
+
+## 运行与恢复
+
+在 Codex app 里，触发 `longtask` 后主会话会按 native subagent 流程执行。它会把状态写到：
+
+```text
+.longtask/state/<spec>.json
+```
+
+恢复时会读取 state，校验 spec hash、已通过 phase 的 commit、工作区状态，然后从第一个未通过 phase 重新派发新的 worker/verifier。
+
+## 什么时候会停止
+
+这些情况不会自动糊过去：
+
+- spec 缺字段或 phase 太模糊。
+- worker 请求扩大 `file_scope`。
+- 实际改动越过 `file_scope` 或命中 `do_not_touch`。
+- verifier 修改了工作区。
+- verifier 输出格式错误或自相矛盾。
+- 测试失败或 DoD 未通过。
+- `verify_cmd` / final command 试图 push、开 PR、deploy 或改基础设施。
+- 最终整体验证失败。
+
+停止时会留下 `.longtask/reports/<spec>/...`，用于继续修 spec、手动修复或恢复执行。
+
+## CLI fallback
+
+`lib/longtask-runner.py` 是给 CI 或没有 native subagents 的终端环境用的 fallback，不是 Codex app 的默认路径。
 
 ```bash
 python3 ~/.codex/skills/longtask/lib/longtask-runner.py path/to/spec.md --repo .
 ```
 
-检查 spec：
+只检查 spec：
 
 ```bash
 python3 ~/.codex/skills/longtask/lib/longtask-runner.py path/to/spec.md --repo . --dry-run
 ```
 
-断点恢复：
+恢复：
 
 ```bash
 python3 ~/.codex/skills/longtask/lib/longtask-runner.py path/to/spec.md --repo . --resume
 ```
 
-## 文件
+## 文件结构
 
 | 文件 | 用途 |
-|---|---|
-| `SKILL.md` | Codex skill 入口和操作契约 |
-| `prompts/conductor.md` | 主会话 conductor checklist |
+| --- | --- |
+| `SKILL.md` | skill 的操作契约 |
+| `prompts/conductor.md` | 主会话执行 checklist |
 | `prompts/worker.md` | worker subagent prompt |
-| `prompts/retry-worker.md` | retry worker prefix |
+| `prompts/retry-worker.md` | retry worker prompt |
 | `prompts/verifier.md` | verifier subagent prompt |
 | `schemas/verifier-result.schema.json` | verifier 输出 schema |
-| `lib/longtask-runner.py` | fallback runner |
-| `lib/codex-wrapper.sh` | fallback `codex exec` wrapper |
-
-## 压力场景
-
-验证这个 skill 时至少覆盖：
-
-- 未跟踪 spec 文件也能启动，且不会被提交。
-- worker 请求扩大 `file_scope` 时停止。
-- worker 修改 `do_not_touch` 时停止。
-- verifier 尝试修代码时停止。
-- verifier 返回 PASS 但测试失败时停止。
-- `final_verify_cmd` 失败时停止。
-- 没有 final gate 且未显式 `final_gate: none` 时停止。
-- `verify_cmd/final_*_cmd` 包含 push/PR/deploy 时停止。
-- fallback runner 不会被误当成默认路径。
+| `lib/longtask-runner.py` | CLI fallback runner |
+| `lib/codex-wrapper.sh` | CLI fallback wrapper |

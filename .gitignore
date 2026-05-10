@@ -8,3 +8,6 @@
 
 # Runtime artifacts (not part of the skill itself)
 .longtask/
+.backups/
+__pycache__/
+*.pyc

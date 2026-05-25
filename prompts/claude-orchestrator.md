@@ -20,6 +20,9 @@ orchestrator dispatch logic, scope gate adjudication.
 **(b) Claude + Codex 讨论** — per-lens hybrid roundtable, round-state editing,
 consensus spec editing. Engineering / Design / UI-design → Claude Agent. CEO-product /
 Domain-expert → codex exec. Consensus editor → Claude Agent primary + codex secondary.
+Then **codex spec sanity** (Step 3) — single Codex pass over the (possibly enhanced)
+spec, unconditional, anti-blindspot audit for omissions / hallucinations / contradictions
+before plan-writer.
 
 **(c) Codex 干活** — phase worker writes code via `codex exec --json --output-schema`.
 Worker does not produce final verdicts; it produces diffs and optionally `decision_options[]`.
@@ -99,7 +102,8 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
    ```
 3. Persist to `state.classification_path`.
 4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} → write preflight-skip
-   document at `.longtask/reports/{spec}/preflight-skip.md`; jump directly to Step 4.
+   document at `.longtask/reports/{spec}/preflight-skip.md`; skip Step 2 (Roundtable)
+   and jump directly to **Step 3 (Codex Spec Sanity Audit — unconditional)**.
 5. `input_shape` ∈ {`source_spec`, `hybrid`} → continue to Step 2.
 
 ---
@@ -117,7 +121,7 @@ Skip entirely if `input_shape` ∈ {`plan_with_source`, `self_contained_plan`}.
   editor surfaces cross-model disagreements. Use only for safety/data-loss/security/
   clinical/regulatory specs, or when classifier sets `risk_reasons` ≥ 2.
 
-**Note:** `final-alignment-review` (Step 7) is always `dual` regardless of this field
+**Note:** `final-alignment-review` (Step 8) is always `dual` regardless of this field
 (决议 #2 exception clause).
 
 Run `discussion_rounds` rounds (minimum 1 for `source_spec`, 0 is not allowed unless
@@ -141,20 +145,67 @@ After the final round:
 
 ---
 
-## Step 3 — Plan Writer
+## Step 3 — Codex Spec Sanity Audit (UNCONDITIONAL)
+
+Single-pass `codex exec` audit of the current spec artifact (enhanced-spec from Step 2 if
+it ran, otherwise the raw input). Always runs — Step 2's optionality does NOT cascade.
+
+1. Build a prompt file embedding `prompts/spec-codex-sanity.md` + the current spec text
+   + source-spec text + classification JSON.
+2. Dispatch via wrapper:
+   ```bash
+   bash lib/codex-wrapper.sh <prompt-file> sanity-r1 \
+     "" \
+     .longtask/state/{spec_basename}/spec-codex-sanity.json
+   ```
+   (No `--output-schema` reference unless a schema is later defined; the prompt's
+   JSON contract is the gate.)
+3. Read the JSON output. Required fields: `verdict` ∈ {CLEAN, NEEDS_REVISION}, four
+   finding arrays (omissions / hallucinations / internal_contradictions /
+   reward_hacking_bait), `confidence`, `recommended_action`.
+4. Reconcile:
+   - `verdict == CLEAN` → proceed to Step 4 with sanity report attached.
+   - `verdict == NEEDS_REVISION` + `recommended_action == loop_to_consensus_editor`
+     + Step 2 ran → re-dispatch consensus-editor with codex findings; cap at 1 loop;
+     then re-run Step 3.
+   - `verdict == NEEDS_REVISION` + Step 2 did NOT run (preflight-skip) → either
+     `ASK_HUMAN` (default) or inject codex findings as "known concerns" into the
+     plan-writer prompt for Step 4 to address per-phase. Policy: ASK_HUMAN when
+     omissions[] has HIGH severity OR hallucinations[] non-empty.
+   - `verdict == NEEDS_REVISION` + `recommended_action == ask_human` → `ASK_HUMAN`.
+5. Persist final `spec_codex_sanity_path` + `spec_codex_sanity_verdict` to state.
+
+**Why unconditional:** Step 2 (roundtable) is a Claude-heavy multi-perspective brainstorm.
+Step 3 is a single Codex audit with a different training prior, designed to catch the
+omissions/hallucinations a same-distribution reviewer chain would miss. Even when the
+spec is already a self-contained plan, running Codex against it once is cheap insurance
+against blind-spot reward hacking that survives Claude-only review.
+
+---
+
+## Step 4 — Plan Writer
 
 1. Dispatch Claude Agent (opus) with `prompts/plan-writer.md`.
    - Plan-writer invokes `superpowers:writing-plans` skill internally.
+   - **Multi-agent mode**: when the plan will have ≥3 phases (estimate from enhanced
+     spec's section count, or from sanity-audit-suggested phase count), plan-writer
+     dispatches one Claude Agent **per phase** in parallel, then merges. Single-phase or
+     2-phase plans stay single-agent. See `prompts/plan-writer.md` for the multi-agent
+     dispatch contract.
 2. Require the plan writer to produce one artifact at:
    `.longtask/plans/{spec_basename}-implementation-plan.md`
 3. Persist `implementation_plan_path` + sha256 to state.
 4. Validate: all source/input requirements must appear in the plan's alignment matrix,
    phase `source_requirements`, DoD, or an explicit out-of-scope row. Missing →
    `BLOCKED_SPEC_REWRITE`.
+5. If Step 3 surfaced any findings (CLEAN with minor gaps OR NEEDS_REVISION accepted by
+   user as "address per-phase"), require those findings to appear in plan as either:
+   (a) dedicated repair phase, (b) added dod bullets on relevant existing phases, or
+   (c) explicit out-of-scope row with rationale. Missing → `BLOCKED_SPEC_REWRITE`.
 
 ---
 
-## Step 4 — Plan Integrity Review (HYBRID gate)
+## Step 5 — Plan Integrity Review (HYBRID gate)
 
 1. Dispatch primary: Claude Agent (opus) with `prompts/plan-integrity-review.md`.
 2. Dispatch secondary: `codex exec --output-schema schemas/plan-integrity-review.schema.json`.
@@ -166,11 +217,11 @@ After the final round:
      confidence wins.
    - Otherwise → `BLOCKED_SPEC_REWRITE` (escalate to user).
 5. Write plan-integrity JSON to `.longtask/reports/{spec}/plan-integrity-review.json`.
-6. FAIL → `BLOCKED_SPEC_REWRITE`; PASS → proceed to Step 5.
+6. FAIL → `BLOCKED_SPEC_REWRITE`; PASS → proceed to Step 6.
 
 ---
 
-## Step 5 — Per-Phase Loop
+## Step 6 — Per-Phase Loop
 
 For each phase `Pn` in the implementation plan (in order):
 
@@ -225,7 +276,7 @@ Invoked when a sub-agent returns `decision_options[]` instead of PASS/FAIL.
 
 ---
 
-## Step 6 — Final E2E2
+## Step 7 — Final E2E2
 
 After all phases return PASS:
 
@@ -241,7 +292,7 @@ After all phases return PASS:
 
 ---
 
-## Step 7 — Final Alignment Review (MANDATORY DUAL)
+## Step 8 — Final Alignment Review (MANDATORY DUAL)
 
 This step is **always** `dual` regardless of `spec.roundtable_mode` (决议 #2 exception).
 
@@ -251,11 +302,11 @@ This step is **always** `dual` regardless of `spec.roundtable_mode` (决议 #2 e
 3. Both run independently; neither sees the other's output first.
 4. Both must return PASS. Any FAIL → `BLOCKED_SPEC_REWRITE` / escalate; do not ship.
 5. Any `vetoes[]` → `ASK_HUMAN` regardless of confidence.
-6. PASS from both → proceed to Step 8.
+6. PASS from both → proceed to Step 9.
 
 ---
 
-## Step 8 — Docs Sync + Ship
+## Step 9 — Docs Sync + Ship
 
 Execute only if spec opts in:
 

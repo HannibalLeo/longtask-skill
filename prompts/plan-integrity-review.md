@@ -119,6 +119,42 @@ and reported in `reward_hacking_signals[]` when found:
 - **Scope creep shield**: `do_not_touch` is empty or covers files critical to
   the spec, enabling accidental collateral changes.
 
+## Textual fidelity check (added in v0.1.1 from E2E findings)
+
+For EVERY `REQ-*` anchor in the source/input/enhanced spec, locate any code
+blocks, function signatures, type annotations, docstrings, exact return values,
+exact error messages, exact CLI flags, or other **load-bearing literal text**
+the source spells out. Then verify those literals appear in either:
+
+- the plan's `goals` for the phase that owns that REQ, **OR**
+- one of that phase's `dod` bullets, **OR**
+- the alignment matrix `dod_bullets` for that REQ row.
+
+If a source-spec code block reads `def hello(name: str) -> str:` with a
+specific docstring, a plan dod that says `def hello(name) returns 'hello world'`
+is a **weakening** — the type annotations and docstring are dropped. Add a
+`reward_hacking_signals[]` entry of the form:
+
+```json
+{
+  "pattern": "textual_fidelity_loss",
+  "file": "<plan path>",
+  "line": <line in plan>,
+  "excerpt": "<plan text>",
+  "source_reference": "<source-spec file:section>",
+  "missing_literals": ["name: str", "-> str", "<docstring excerpt>"]
+}
+```
+
+This rule is **explicit** because both reviewers in the v0.1.0 E2E test missed
+exactly this pattern (Claude+Codex plan-integrity both returned PASS, then
+Codex caught it later at final-alignment). The check belongs at the plan-
+integrity gate, not at final-alignment — by then it's a post-hoc finding on
+already-written code.
+
+When the source spec uses approximate wording (no code block, no exact value),
+this rule does NOT fire. Only literal, load-bearing text from source counts.
+
 ## Output
 
 Write exactly one JSON object to `{output_path}` matching

@@ -8,7 +8,7 @@
 
 ## One line
 
-Write a spec → `/longtask <spec_path>` → the main session runs all 8 steps (preflight / classify / roundtable / plan-write / plan-integrity / per-phase / final-e2e2 / final-alignment); on all PASS optionally `/ship`.
+Write a spec → `/longtask <spec_path>` → the main session runs all 9 steps (preflight / classify / roundtable / **codex-spec-sanity** / plan-write / plan-integrity / per-phase / final-e2e2 / final-alignment); on all PASS optionally `/ship`.
 
 ## Owner four-step division
 
@@ -50,27 +50,37 @@ dod:
   - "OpenAPI spec includes the new path"
 ```
 
-## 8-step pipeline
+## 9-step pipeline
 
 ```
-Step 0  Preflight       Validate frontmatter (source_spec_path / sha256 / final_verify_cmd
-                        / final_e2e2_cmd / final_report_path are required)
-Step 1  Classifier      Claude Agent → JSON {input_shape, discussion_rounds,
-                        required_lenses, risk_reasons}
-Step 2  Roundtable      (conditional) N rounds × 5 lenses hybrid discussion +
-                        round-state editor + consensus editor. Skipped when
-                        input_shape ∈ {plan_with_source, self_contained_plan}
-Step 3  Plan-writer     Claude Agent invokes superpowers:writing-plans → plan.md
-Step 4  Plan-integrity  HYBRID gate (Claude primary + Codex secondary) →
-                        PASS or BLOCKED_SPEC_REWRITE
-Step 5  Per-phase loop  For each Pn: sub-agent → codex-worker → scope gate →
-                        codex-verifier (schema JSON) → main-line JSON review →
-                        commit (docs_sync runs pre-commit if enabled)
-Step 6  Final E2E2      Claude Agent runs final_verify_cmd + final_e2e2_cmd →
-                        captures screenshots → writes final-report.md
-Step 7  Final-alignment MANDATORY DUAL hybrid (Claude + Codex both required) →
-                        PASS or escalate
-Step 8  Ship (optional) docs_sync → update-docs; ship → gstack /ship
+Step 0  Preflight         Validate frontmatter (source_spec_path / sha256 / final_verify_cmd
+                          / final_e2e2_cmd / final_report_path are required)
+Step 1  Classifier        Claude Agent → JSON {input_shape, discussion_rounds,
+                          required_lenses, risk_reasons}
+Step 2  Roundtable        (conditional) N rounds × 5 lenses hybrid discussion +
+                          round-state editor + consensus editor. Skipped when
+                          input_shape ∈ {plan_with_source, self_contained_plan}
+Step 3  Codex spec sanity (**UNCONDITIONAL**) codex exec --output-schema single pass:
+                          omissions / hallucinations / internal contradictions /
+                          reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}.
+                          Especially load-bearing when Step 2 was skipped — this is the
+                          only cross-model second opinion before plan-writer
+Step 4  Plan-writer       Claude Agent invokes superpowers:writing-plans → plan.md
+                          (**multi-agent dispatch** when plan has ≥3 phases)
+Step 5  Plan-integrity    HYBRID gate (Claude primary + Codex secondary) →
+                          PASS or BLOCKED_SPEC_REWRITE. Includes textual fidelity check:
+                          every REQ-* code block / signature / docstring in source spec
+                          must appear literally in plan goals + dod
+Step 6  Per-phase loop    For each Pn: sub-agent → codex-worker → scope gate →
+                          codex-verifier (schema JSON) → main-line JSON review →
+                          commit (docs_sync runs pre-commit if enabled)
+Step 7  Final E2E2        Claude Agent runs final_verify_cmd + final_e2e2_cmd →
+                          captures screenshots → writes final-report.md.
+                          Subagent MUST proactively flag residual risks to Step 8
+                          (stub screenshots, dod gaps, etc.)
+Step 8  Final-alignment   MANDATORY DUAL hybrid (Claude + Codex both required) →
+                          PASS or escalate
+Step 9  Ship (optional)   docs_sync → update-docs; ship → gstack /ship
 ```
 
 ## Key design decisions
@@ -101,7 +111,7 @@ Design spec: `docs/superpowers/specs/2026-05-26-longtask-claude-parity-design.md
 ├── lib/codex-wrapper.sh                  # codex exec wrapper (--json --output-schema --cd)
 ├── lib/smoke.sh                          # static sanity check
 ├── schemas/{verifier-result,decision-review,plan-integrity-review}.schema.json
-└── prompts/                              # 15 prompts (see SKILL.md `## Prompts and wrapper`)
+└── prompts/                              # 16 prompts (see SKILL.md `## Prompts and wrapper`)
 ```
 
 ## Sanity self-check

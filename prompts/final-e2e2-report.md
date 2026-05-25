@@ -132,8 +132,31 @@ The report must include all five sections:
    described in one sentence, and the REQ-* it validates.
 4. **Commands run**: for each command — exact command string, exit code, and
    compact output excerpt (max 20 lines or the critical failure lines).
-5. **Residual risks**: any blocked evidence, non-zero exits, or screenshot
-   quality concerns that the final-alignment reviewer should evaluate.
+5. **Residual risks** (MANDATORY active flagging — added in v0.1.1 from E2E findings):
+   You MUST proactively surface every concern Step 8 final-alignment should
+   weigh, even when the chain otherwise looks PASS. Catalogue (non-exhaustive):
+   - **Screenshot quality**: stub / placeholder / 1×1 PNG / fixture-generated
+     image — explicitly call out byte count and provenance (which command
+     produced it). If the source spec has no UI scope and a stub is the
+     intentional contract, say so in one sentence so final-alignment can
+     decide rather than re-derive.
+   - **Test coverage vs. dod**: any `dod` bullet that has no direct
+     `verify_cmd` evidence (passed indirectly via another bullet, by visual
+     inspection only, etc.).
+   - **Non-zero exits even on PASS path**: warnings, deprecation notices,
+     stderr noise that didn't trip exit code but might indicate decay.
+   - **Spec literals not present in commits**: if you spot any source-spec
+     code block / function signature / docstring missing from the actual
+     code, flag it (plan-integrity should have caught it, but redundancy is
+     cheap insurance — this E2E test missed it once, plan-integrity now has
+     a textual-fidelity rule but the gate isn't perfect).
+   - **Off-path artifacts**: anything in the working tree outside `file_scope`
+     of any phase that's neither in `do_not_touch` nor expected output.
+
+   Each residual risk is one bullet in this section AND one entry in the
+   final response's `risks[]` array. Do NOT collapse silently; if you see it,
+   surface it. False positives are cheap (final-alignment dismisses them);
+   missed risks compound into BLOCKED returns or shipped bugs.
 
 For `self_contained_plan`: treat the plan's own Source Requirements, Alignment
 Matrix, phase `source_requirements`, DoD, and final gate contract as the

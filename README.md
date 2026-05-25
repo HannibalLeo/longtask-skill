@@ -8,7 +8,7 @@
 
 ## 一句话
 
-写好 spec → `/longtask <spec_path>` → 主线 session 自动跑完 8 步（preflight / classify / roundtable / plan-write / plan-integrity / per-phase / final-e2e2 / final-alignment），全部 PASS 后可选 `/ship`。
+写好 spec → `/longtask <spec_path>` → 主线 session 自动跑完 9 步（preflight / classify / roundtable / **codex-spec-sanity** / plan-write / plan-integrity / per-phase / final-e2e2 / final-alignment），全部 PASS 后可选 `/ship`。
 
 ## Owner 四步分工
 
@@ -50,25 +50,33 @@ dod:
   - "OpenAPI spec includes the new path"
 ```
 
-## 8 步流水线
+## 9 步流水线
 
 ```
-Step 0  Preflight       校验 frontmatter（source_spec_path / sha256 / final_verify_cmd /
-                        final_e2e2_cmd / final_report_path 必填）
-Step 1  Classifier      Claude Agent → JSON {input_shape, discussion_rounds,
-                        required_lenses, risk_reasons}
-Step 2  Roundtable      （条件）N round × 5 lens hybrid 讨论 + round-state editor
-                        + consensus editor。input_shape ∈ {plan_with_source,
-                        self_contained_plan} 时跳过
-Step 3  Plan-writer     Claude Agent 调 superpowers:writing-plans → plan.md
-Step 4  Plan-integrity  HYBRID gate（Claude 主 + Codex 副）→ PASS 或 BLOCKED_SPEC_REWRITE
-Step 5  Per-phase loop  每 Pn：sub-agent → codex-worker 写代码 → scope gate →
-                        codex-verifier 产 schema JSON → Claude 主线 review JSON →
-                        commit（docs_sync 在 commit 前自动跑）
-Step 6  Final E2E2      Claude Agent 跑 final_verify_cmd + final_e2e2_cmd → 截图
-                        → 写 final-report.md
-Step 7  Final-alignment 强制 DUAL hybrid（Claude + Codex 都必须跑）→ PASS 或 escalate
-Step 8  Ship（可选）    docs_sync → update-docs；ship → gstack /ship
+Step 0  Preflight         校验 frontmatter（source_spec_path / sha256 / final_verify_cmd /
+                          final_e2e2_cmd / final_report_path 必填）
+Step 1  Classifier        Claude Agent → JSON {input_shape, discussion_rounds,
+                          required_lenses, risk_reasons}
+Step 2  Roundtable        （条件）N round × 5 lens hybrid 讨论 + round-state editor
+                          + consensus editor。input_shape ∈ {plan_with_source,
+                          self_contained_plan} 时跳过
+Step 3  Codex spec sanity （**无条件**）codex exec --output-schema 单跑：扫 omissions /
+                          hallucinations / internal contradictions / reward-hacking bait
+                          → JSON {verdict: CLEAN | NEEDS_REVISION}。Step 2 跳过时尤其
+                          重要——这是唯一的跨模型 second opinion
+Step 4  Plan-writer       Claude Agent 调 superpowers:writing-plans → plan.md
+                          （**multi-agent dispatch**：phase ≥3 时按 phase 并行）
+Step 5  Plan-integrity    HYBRID gate（Claude 主 + Codex 副）→ PASS 或 BLOCKED_SPEC_REWRITE
+                          含 textual fidelity check：REQ-* 里的 code block / 签名 /
+                          docstring 必须在 plan 的 goals+dod 字面保留
+Step 6  Per-phase loop    每 Pn：sub-agent → codex-worker 写代码 → scope gate →
+                          codex-verifier 产 schema JSON → Claude 主线 review JSON →
+                          commit（docs_sync 在 commit 前自动跑）
+Step 7  Final E2E2        Claude Agent 跑 final_verify_cmd + final_e2e2_cmd → 截图
+                          → 写 final-report.md；subagent **必须**主动 flag 残余风险
+                          给 Step 8（stub 截图、未覆盖 dod 等）
+Step 8  Final-alignment   强制 DUAL hybrid（Claude + Codex 都必须跑）→ PASS 或 escalate
+Step 9  Ship（可选）      docs_sync → update-docs；ship → gstack /ship
 ```
 
 ## 关键设计决策
@@ -99,7 +107,7 @@ Step 8  Ship（可选）    docs_sync → update-docs；ship → gstack /ship
 ├── lib/codex-wrapper.sh                  # codex exec 包装（--json --output-schema --cd）
 ├── lib/smoke.sh                          # 静态 sanity check
 ├── schemas/{verifier-result,decision-review,plan-integrity-review}.schema.json
-└── prompts/                              # 15 个 prompt（详见 SKILL.md `## Prompts and wrapper`）
+└── prompts/                              # 16 个 prompt（详见 SKILL.md `## Prompts and wrapper`）
 ```
 
 ## sanity 自检

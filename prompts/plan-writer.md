@@ -87,6 +87,51 @@ Path: `{spec_update_path}`
 {repo_evidence_summary}
 ```
 
+## Multi-Agent Dispatch (NEW in v0.1.1)
+
+For specs that will produce a plan with **≥3 phases**, the plan-writer Claude Agent
+SHOULD parallelize phase-block authoring. This is an efficiency win, not a correctness
+change — the no-loss rules below still apply, but the work is split across fresh
+Claude Agent calls.
+
+**Routing:**
+- 1-2 phase plans (typical for `plan_with_source` / `self_contained_plan` shortcuts,
+  or tiny `source_spec` → simple plan) → single-agent (this prompt run, no fan-out).
+- ≥3 phase plans → multi-agent fan-out:
+  1. THIS agent (plan-writer-orchestrator) drafts the plan **scaffold**: frontmatter,
+     `## Source Requirements`, `## Alignment Matrix`, the phase outline (just `P1`/`P2`/`P3`
+     headings with one-line goals and the REQ-* mapping), and the final E2E2 contract.
+  2. Then dispatch one **Claude Agent per phase** (Agent tool, opus, sonnet acceptable
+     for mechanical phases) with the scaffold + the specific phase brief, asking for
+     just that phase's full block (goals, file_scope, do_not_touch, verify_cmd,
+     verify_passes_when, max_retry_rounds, source_requirements, dod).
+  3. Collect all phase blocks. Merge into the scaffold in phase order.
+  4. Re-validate alignment matrix vs. merged phases: every REQ-* mapped, no
+     `do_not_touch`/`file_scope` overlaps **between phases** (a P2 worker shouldn't be
+     blocked by P1's `do_not_touch` unless that's intentional — flag if unclear).
+  5. Emit the merged plan as a single artifact.
+
+**Constraints on the per-phase agents:**
+- Each fan-out agent sees only: the source-spec + enhanced-spec slice relevant to its
+  REQ-* assignments, the plan scaffold, and the previous-phase outputs as `inputs`.
+  Do NOT pass full source-spec / enhanced-spec to every fan-out agent — that defeats
+  the context-budget benefit.
+- Each fan-out agent must use the **same** `REQ-*` IDs assigned in the scaffold's
+  alignment matrix. Inventing new IDs → orchestrator re-runs the agent.
+- Each fan-out agent emits **only** the phase block (no frontmatter, no alignment
+  matrix). Plan-writer-orchestrator owns the wrapping document.
+
+**Why this is opt-in by phase count, not always:** the parallelism cost (extra agent
+dispatches, merge complexity) only pays for itself when there's enough phase content
+to write. For 1-2 phase plans, single-agent is faster end-to-end.
+
+**Reward-hacking guard:** A fan-out agent that doesn't have enough information to
+produce a complete phase block must return `NEEDS_CONTEXT` rather than guess. Plan-writer-
+orchestrator escalates `NEEDS_CONTEXT` to the longtask main orchestrator — never
+fills in placeholder text to "make it complete".
+
+---
+
 ## No-Loss Rules
 
 1. Preserve every concrete source-spec and enhanced-spec requirement. Assign

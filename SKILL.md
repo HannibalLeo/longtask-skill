@@ -36,18 +36,19 @@ Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
 ## Pipeline overview (8 steps)
 
 ```
-Step 0  Preflight        Validate spec frontmatter + state schema
-Step 1  Classifier       Claude Agent reads spec → JSON {input_shape, discussion_rounds, required_lenses, risk_reasons}
-Step 2  Roundtable       (conditional) Per-lens hybrid discussion × N rounds → round-state editor → consensus editor
-Step 3  Plan-writer      Claude Agent invokes superpowers:writing-plans → implementation_plan.md
-Step 4  Plan-integrity   HYBRID gate (Claude primary + Codex secondary) → PASS or BLOCKED_SPEC_REWRITE
-Step 5  Per-phase loop   For each Pn: Claude sub-agent dispatches Codex worker → scope gate → Codex verifier (schema) → main-line JSON review → commit on PASS
-Step 6  Final E2E2       Claude Agent runs final_verify_cmd + final_e2e2_cmd → screenshots → final_report
-Step 7  Final-alignment  MANDATORY DUAL hybrid gate (Claude + Codex always both run) → PASS or escalate
-Step 8  Ship (optional)  spec.docs_sync → update-docs; spec.ship → gstack /ship
+Step 0  Preflight         Validate spec frontmatter + state schema
+Step 1  Classifier        Claude Agent reads spec → JSON {input_shape, discussion_rounds, required_lenses, risk_reasons}
+Step 2  Roundtable        (conditional) Per-lens hybrid discussion × N rounds → round-state editor → consensus editor
+Step 3  Codex spec sanity (UNCONDITIONAL) Codex GPT-5.5 single pass: omissions / hallucinations / internal contradictions / reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}
+Step 4  Plan-writer       Claude Agent invokes superpowers:writing-plans → implementation_plan.md (multi-agent dispatch when plan has ≥3 phases)
+Step 5  Plan-integrity    HYBRID gate (Claude primary + Codex secondary) → PASS or BLOCKED_SPEC_REWRITE
+Step 6  Per-phase loop    For each Pn: Claude sub-agent dispatches Codex worker → scope gate → Codex verifier (schema) → main-line JSON review → commit on PASS
+Step 7  Final E2E2        Claude Agent runs final_verify_cmd + final_e2e2_cmd → screenshots → final_report (subagent must proactively flag residual risks to Step 8)
+Step 8  Final-alignment   MANDATORY DUAL hybrid gate (Claude + Codex always both run) → PASS or escalate
+Step 9  Ship (optional)   spec.docs_sync → update-docs; spec.ship → gstack /ship
 ```
 
-Step 2 is skipped when classifier outputs `input_shape ∈ {plan_with_source, self_contained_plan}` (the user already supplied a plan).
+Step 2 is skipped when classifier outputs `input_shape ∈ {plan_with_source, self_contained_plan}` (the user already supplied a plan). **Step 3 is unconditional** — codex sanity audit always runs, especially when Step 2 was skipped (no Claude roundtable means codex is the only multi-model second opinion on the spec before plan-writer).
 
 ## Spec schema (REQUIRED — orchestrator validates at Step 0)
 
@@ -206,7 +207,7 @@ codex exec children (one-shot, GPT-5.5)
 | **codex-worker** | spec + scoped files | YES (working tree only) | NO | one-shot per round |
 | **codex-verifier** | spec + working tree + verify_cmd output | NO | NO | one-shot per round; output is JSON |
 
-## Role × Model dispatch matrix (14 roles, owner four-step assignments)
+## Role × Model dispatch matrix (15 roles, owner four-step assignments)
 
 | Role | Primary | Secondary (key gates) | Dispatch | Step |
 |---|---|---|---|---|
@@ -220,7 +221,8 @@ codex exec children (one-shot, GPT-5.5)
 | Roundtable: domain-expert | Codex GPT-5.5 xhigh | — | `codex exec` | (b) |
 | Round-state editor | Claude opus | — | Agent tool | (b) |
 | Consensus editor | Claude opus | Codex GPT-5.5 secondary | Agent + `codex exec` | (b) |
-| **Plan-writer** | **Claude opus** (invokes `superpowers:writing-plans`) | — | Agent tool | **(a)** |
+| **Codex spec sanity** | **Codex GPT-5.5 xhigh** (unconditional second-opinion audit) | — | `codex exec --output-schema` | **(b)** |
+| **Plan-writer** | **Claude opus** (invokes `superpowers:writing-plans`; multi-agent dispatch when plan ≥3 phases) | — | Agent tool | **(a)** |
 | **Plan-integrity review** | **Claude opus** | **Codex GPT-5.5 xhigh** | hybrid (decision #6) | **(a)+(d)** |
 | Phase worker | Codex GPT-5.5 (default xhigh; downgrade to high acceptable) | — | `codex exec` via wrapper | (c) |
 | **Phase verifier** | Codex GPT-5.5 (schema-driven JSON) | **Claude main-line reads JSON** | `codex exec --output-schema` → Claude review | **(c)→(d)** |
@@ -248,9 +250,9 @@ codex exec children (one-shot, GPT-5.5)
 ## Hybrid judgment gates — reconciliation (decision #6)
 
 Three gates run as Claude-primary + Codex-secondary hybrid:
-1. **plan-integrity-review** (Step 4)
-2. **decision-review** (Step 5, when worker returns `decision_options[]`)
-3. **final-alignment-review** (Step 7, **mandatory dual** regardless of `roundtable_mode`)
+1. **plan-integrity-review** (Step 5)
+2. **decision-review** (Step 6, when worker returns `decision_options[]`)
+3. **final-alignment-review** (Step 8, **mandatory dual** regardless of `roundtable_mode`)
 
 Reconciliation rules (each gate prompt restates these so reviewers know their `vetoes[]` matter):
 
@@ -425,24 +427,25 @@ State lives at `.longtask/state/{spec_basename}.json`. Schema:
 │   └── plan-integrity-review.schema.json
 └── prompts/
     # === Orchestrator + per-phase ===
-    ├── claude-orchestrator.md        # main session checklist (Owner four-step + 8-step pipeline)
+    ├── claude-orchestrator.md        # main session checklist (Owner four-step + 9-step pipeline)
     ├── claude-sub-agent.md           # per-phase Claude Agent prompt (schema-driven verifier)
-    # === Step 1-3 (a / b) ===
+    # === Step 1-4 (a / b) ===
     ├── spec-classifier.md            # Claude Agent — input classification + risk
     ├── spec-roundtable.md            # per-lens hybrid roundtable
     ├── spec-round-state.md           # round-state editor (Claude Agent)
     ├── spec-consensus-editor.md      # hybrid consensus
-    ├── plan-writer.md                # Claude Agent invokes superpowers:writing-plans
-    # === Step 4 / 5 / 7 hybrid gates ===
+    ├── spec-codex-sanity.md          # Codex single-pass spec audit (unconditional Step 3)
+    ├── plan-writer.md                # Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
+    # === Step 5 / 6 / 8 hybrid gates ===
     ├── plan-integrity-review.md      # hybrid: Claude primary + Codex secondary
     ├── decision-review.md            # hybrid: Claude primary + Codex secondary
     ├── final-alignment-review.md     # hybrid: MANDATORY DUAL
-    # === Step 5 codex children ===
+    # === Step 6 codex children ===
     ├── codex-worker.md               # codex exec (writes code)
     ├── codex-verifier.md             # codex exec --output-schema (JSON verdict)
     ├── codex-worker-retry.md         # carries prior verifier JSON
-    # === Step 6 ===
-    ├── final-e2e2-report.md          # Claude Agent (gstack browse / screenshots)
+    # === Step 7 ===
+    ├── final-e2e2-report.md          # Claude Agent (gstack browse / screenshots; proactive residual-risk flagging)
     # === Cross-cutting ===
     └── known-traps-appendix.md       # 5 categories of execution-environment traps
 ```

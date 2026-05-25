@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "input_shape",
+    "omitted_requirements",
+    "weakened_requirements",
+    "coverage_gaps",
+    "phase_schema_gaps",
+    "verification_gaps",
+    "reward_hacking_signals",
+    "required_repairs",
+    "confidence"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"]
+    },
+    "input_shape": {
+      "type": "string",
+      "enum": [
+        "source_spec",
+        "hybrid",
+        "self_contained_plan",
+        "plan_with_source"
+      ]
+    },
+    "omitted_requirements": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "weakened_requirements": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "coverage_gaps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phase_schema_gaps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification_gaps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reward_hacking_signals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "required_repairs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}

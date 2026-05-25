@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "summary",
+    "verify_cmd_exit",
+    "verify_cmd_excerpt",
+    "reward_hacking_signals",
+    "dod_results",
+    "root_cause_hint"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "verify_cmd_exit": {
+      "type": "integer"
+    },
+    "verify_cmd_excerpt": {
+      "type": "string"
+    },
+    "reward_hacking_signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern", "file", "line", "excerpt"],
+        "properties": {
+          "pattern": { "type": "string" },
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "excerpt": { "type": "string" }
+        }
+      }
+    },
+    "dod_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["bullet", "passed", "evidence"],
+        "properties": {
+          "bullet": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "root_cause_hint": {
+      "type": "string"
+    }
+  }
+}

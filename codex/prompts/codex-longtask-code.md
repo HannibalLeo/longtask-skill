@@ -194,6 +194,39 @@ failure surfacing if the choice turns out to be wrong.
 
 For each phase in the (possibly auto-promoted) manifest's plan, in order:
 
+0. **Phase preflight** (added in v0.4.1; full contract in
+   `skills/codex-longtask-code/SKILL.md` § "Phase Preflight"). Run the phase
+   `verify_cmd` against current HEAD (baseline for this phase) from repo root
+   with a 90-second wall-clock budget. Reset the working tree afterwards
+   (`git reset --hard <pre_head> && git clean -fd -e .longtask/`) regardless
+   of outcome.
+
+   Skip preflight entirely (record `result: SKIPPED`, proceed to worker)
+   when: phase frontmatter `preflight_skip: true`; `verify_cmd` contains the
+   literal `ssh ` token; or `phase_runs_on` is set to anything other than
+   `local`.
+
+   Classify the captured `(exit_code, stderr)` per the fatal signal taxonomy:
+
+   - `FATAL_PLAN_DEFECT` (any of: exit 127, `command not found`, `error TS5083:`,
+     `npm ERR! ENOENT.*package\.json`, `Cannot connect to the Docker daemon`,
+     shell `syntax error` with exit ∈ {1,2}, `Host key verification failed`
+     OR `Connection refused`, or `error: unrecognized arguments` for an
+     argument that appears literally in the verify_cmd source) → STOP the
+     phase loop, write `codex-code-exit.json` with
+     `blocked_reason: BLOCKED_PLAN_DEFECT`, do NOT dispatch the worker.
+   - `EXPECTED_RED` (non-zero exit, no fatal signal) → dispatch worker.
+   - `UNEXPECTED_PASS` (exit 0 on baseline) → log to
+     `phase_preflight_results[]`, dispatch worker; the verifier still
+     adjudicates.
+   - `INCONCLUSIVE` (exit 124 / timeout) → log warning, dispatch worker.
+
+   Persist evidence to
+   `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json` with shape:
+   `{phase, ran_at, duration_seconds, result, exit_code,
+   fatal_signals_matched, sub_reason, verify_cmd_text, stderr_tail,
+   stdout_tail, pre_head_sha, post_reset_porcelain_empty}`.
+
 1. Dispatch worker (`worker.md`).
 2. Apply git scope checks (`file_scope` and `do_not_touch`).
 3. Dispatch verifier (`verifier.md`) and parse schema-bound JSON.
@@ -221,6 +254,13 @@ Write `codex-code-exit.json` with:
 - `auto_promotion_summary` (Form 2 / Form 3 only): which fields were
   synthesized, which were resolved from existing files, which were left null,
   and the `execution_mode_hint` recorded on the synthesized manifest
+- `phase_preflight_results[]`: one object per phase whose preflight ran;
+  shape mirrors the per-phase evidence file
+  `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json`. `result` is
+  one of `EXPECTED_RED | FATAL_PLAN_DEFECT | UNEXPECTED_PASS | INCONCLUSIVE |
+  SKIPPED`. When `overall_status == REVIEW_FAIL` and the cause is preflight,
+  `blocked_reason == "BLOCKED_PLAN_DEFECT"` and the matching entry's
+  `fatal_signals_matched` is non-empty.
 
 `PARTIAL_PASS` preserves earlier PASS commits and resumes from first non-PASS by
 default.

@@ -164,10 +164,117 @@ in-memory or on-disk manifest:
 If any startup gate fails, stop with blocked status and write exit-state without
 creating phase commits.
 
+## Phase Preflight (added in v0.4.1)
+
+Before dispatching the worker for each phase `P_n`, run a fail-fast preflight
+that distinguishes plan defects ("verify_cmd cannot even start") from healthy
+RED states ("verify_cmd ran and asserted the missing behavior"). This catches
+plan-text errors that would otherwise burn a worker round + verifier round
+just to discover the verify_cmd was unrunnable from the start (TS5083 from
+running `vue-tsc -b` in the wrong cwd is the canonical motivating case).
+
+### Skip rules
+
+Record `result: SKIPPED` and proceed to worker when ANY:
+
+- Phase frontmatter sets `preflight_skip: true` (explicit opt-out by plan
+  author, e.g. verify_cmd has destructive side-effects that can't be
+  idempotently reset).
+- Phase `verify_cmd` contains a literal `ssh ` token (cross-host; codex
+  sandbox cannot ssh, and we don't want preflight side-effects on the remote
+  either).
+- Phase frontmatter `phase_runs_on` is set to anything other than `local`
+  (e.g., `windows-backend`).
+- Running in `--resume` mode AND `phases.{Pn}.status == PASS` (outer skip
+  already applies).
+
+### Procedure (run from repo root)
+
+1. **Snapshot**: `pre_head = git rev-parse HEAD`; assert
+   `git status --porcelain` is empty (else `BLOCKED_PLAN_DEFECT` with
+   `sub_reason: baseline_dirty`).
+2. **Run verify_cmd** with a 90-second wall-clock budget
+   (`timeout 90 bash -c "<verify_cmd>"`). Capture `exit_code`, last 200
+   lines of stderr, last 200 lines of stdout.
+3. **Reset working tree** (verify_cmd may have written files):
+   `git reset --hard $pre_head && git clean -fd -e .longtask/`. Re-assert
+   `git status --porcelain` is empty (else `BLOCKED_PLAN_DEFECT` with
+   `sub_reason: preflight_residue`).
+4. **Classify**:
+
+   | Class | Trigger | Action |
+   |---|---|---|
+   | `EXPECTED_RED` | exit != 0 AND no fatal signal | dispatch worker |
+   | `FATAL_PLAN_DEFECT` | any fatal signal matched (see below) | stop phase loop, write exit-state with `BLOCKED_PLAN_DEFECT` |
+   | `UNEXPECTED_PASS` | exit == 0 on baseline | log warning to exit-state, dispatch worker; verifier adjudicates the final commit |
+   | `INCONCLUSIVE` | 90s timeout (exit 124) | log warning, dispatch worker |
+
+### Fatal signal taxonomy (intentionally tight)
+
+A signal counts as fatal when at least one of these matches:
+
+- `exit_code == 127` (binary not found).
+- stderr contains literal `command not found`.
+- stderr matches `error TS5083:` (TypeScript: Cannot read file — typical
+  `tsc -b` / `vue-tsc -b` run from wrong cwd, OR a `references` chain
+  pointing to a non-existent tsconfig).
+- stderr matches `npm ERR! ENOENT.*package\.json`.
+- stderr matches `Cannot connect to the Docker daemon`.
+- stderr matches `Host key verification failed` OR `Connection refused`
+  (cross-host that escaped the skip rules — fail loud so the plan author
+  fixes either the verify_cmd or the skip rule).
+- stderr matches shell `syntax error` AND `exit_code in {1, 2}` (covers
+  `bash -n` class — unterminated heredoc, unbalanced quotes, etc.).
+- stderr matches `error: unrecognized arguments` AND the unrecognized
+  argument appears literally in the verify_cmd source (argparse class).
+
+The list is intentionally tight. Healthy RED states (failed asserts, missing
+test files because the phase hasn't written them yet, grep returning nothing)
+must NOT trigger any of these signals. If a future plan defect slips past,
+prefer adding a new specific entry over loosening any existing regex.
+
+### Evidence file
+
+Write `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json`:
+
+```json
+{
+  "phase": "P0",
+  "ran_at": "<ISO 8601>",
+  "duration_seconds": 12.4,
+  "result": "EXPECTED_RED | FATAL_PLAN_DEFECT | UNEXPECTED_PASS | INCONCLUSIVE | SKIPPED",
+  "exit_code": 1,
+  "fatal_signals_matched": [],
+  "sub_reason": null,
+  "verify_cmd_text": "<the command block as run>",
+  "stderr_tail": "<last 200 lines>",
+  "stdout_tail": "<last 200 lines>",
+  "pre_head_sha": "...",
+  "post_reset_porcelain_empty": true
+}
+```
+
+### Exit on FATAL_PLAN_DEFECT
+
+- Do not dispatch the codex worker for this phase.
+- Write `codex-code-exit.json` with `overall_status: REVIEW_FAIL`,
+  `first_blocked_phase: {Pn}`, `blocked_reason: BLOCKED_PLAN_DEFECT`.
+- `phase_results[{Pn}].phase_status = BLOCKED`,
+  `phase_results[{Pn}].blocked_reason` = one-paragraph explanation citing
+  the matched signal and the verify_cmd line that triggered it.
+- Recovery: edit the plan's `verify_cmd` (typical fixes: prepend
+  `cd <subdir> &&`, swap `tsc -b` for `tsc --project`, use absolute paths,
+  gate ssh-bearing lines behind `preflight_skip: true`); rerun
+  `/longtask:longtaskPlan {source_spec_path} --resume` to refresh sha
+  lineage; then `/longtask:codex-longtask-code <input_path> --resume`.
+
 ## Phase Loop
 
 For each phase in manifest order:
 
+0. **Phase preflight** (see above): on `FATAL_PLAN_DEFECT`, exit before
+   touching the codex worker. On `EXPECTED_RED` / `UNEXPECTED_PASS` /
+   `INCONCLUSIVE` / `SKIPPED`, proceed to step 1.
 1. Run worker prompt (`codex/prompts/worker.md`).
 2. Compute changed paths via git and enforce:
    - inside `file_scope`
@@ -187,7 +294,9 @@ For each phase in manifest order:
 Always write `codex-code-exit.json` with:
 
 1. `overall_status`: `ALL_PASS` | `PARTIAL_PASS` | `REVIEW_FAIL`
-2. `first_blocked_phase` and `blocked_reason` when non-pass
+2. `first_blocked_phase` and `blocked_reason` when non-pass. New blocked
+   reason added in v0.4.1: `BLOCKED_PLAN_DEFECT` (emitted by Phase Preflight
+   when a phase's `verify_cmd` cannot start from repo root).
 3. per-phase result map (status, changed files, verifier paths, commits, retries)
 4. `phase_commit_chain` and `preserved_phase_commits`
 5. decisions, model requests, wrapper evidence
@@ -202,6 +311,13 @@ Always write `codex-code-exit.json` with:
 9. `auto_promotion_summary` (Form 2 / Form 3 only): which fields the
    auto-promoter synthesized, which were resolved from existing files,
    which were left empty.
+10. `phase_preflight_results[]`: one object per phase whose preflight ran;
+    shape mirrors the per-phase evidence file
+    `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json`
+    (`phase`, `result`, `exit_code`, `fatal_signals_matched`, `sub_reason`,
+    `stderr_tail`, `stdout_tail`, `pre_head_sha`,
+    `post_reset_porcelain_empty`, `duration_seconds`, `verify_cmd_text`,
+    `ran_at`).
 
 `PARTIAL_PASS` must preserve already committed PASS phases and default resume
 from the first non-PASS phase.

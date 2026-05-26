@@ -417,6 +417,190 @@ def ensure_clean_workspace(repo: Path, allow_dirty: bool, ignore_paths: set[str]
         )
 
 
+# Phase Preflight (Step 6.0) — see skills/codex-longtask-code/SKILL.md § "Phase Preflight"
+# Classifies baseline verify_cmd outcome as FATAL_PLAN_DEFECT vs EXPECTED_RED so that
+# plan-text errors fail fast before the codex worker round burns any tokens.
+
+PREFLIGHT_BUDGET_SECONDS = 90
+_TS_LIB_MISSING_RE = re.compile(r"error TS5083:")
+_NPM_ENOENT_PKG_RE = re.compile(r"npm ERR! ENOENT.*package\.json")
+_ARGPARSE_UNRECOG_RE = re.compile(r"error: unrecognized arguments")
+
+
+def _tail_lines(text: str, n: int = 200) -> str:
+    if not text:
+        return ""
+    lines = text.splitlines()
+    return "\n".join(lines[-n:])
+
+
+def should_skip_preflight(phase: Phase) -> tuple[bool, str | None]:
+    """Return (skip, reason)."""
+    if phase.fields.get("preflight_skip") is True:
+        return True, "preflight_skip=true"
+    if " ssh " in (" " + phase.verify_cmd):
+        return True, "verify_cmd contains 'ssh ' token"
+    runs_on = phase.fields.get("phase_runs_on")
+    if runs_on and str(runs_on).strip().lower() != "local":
+        return True, f"phase_runs_on={runs_on}"
+    return False, None
+
+
+def classify_preflight(exit_code: int, stderr: str, timed_out: bool, verify_cmd: str) -> list[str]:
+    """Return a list of matched fatal signal names. Empty list = not fatal."""
+    matched: list[str] = []
+    if exit_code == 127:
+        matched.append("exit_127")
+    if "command not found" in stderr:
+        matched.append("command_not_found")
+    if _TS_LIB_MISSING_RE.search(stderr):
+        matched.append("ts5083_tsconfig")
+    if _NPM_ENOENT_PKG_RE.search(stderr):
+        matched.append("npm_enoent_pkg")
+    if "Cannot connect to the Docker daemon" in stderr:
+        matched.append("docker_daemon")
+    if "Host key verification failed" in stderr or "Connection refused" in stderr:
+        matched.append("ssh_unreachable")
+    if "syntax error" in stderr and exit_code in (1, 2):
+        matched.append("shell_syntax")
+    if _ARGPARSE_UNRECOG_RE.search(stderr):
+        # require the unrecognized arg to appear literally in the verify_cmd
+        # source — otherwise it's a downstream tool surfacing a user-data
+        # issue rather than a plan defect
+        for line in stderr.splitlines():
+            m = re.search(r"unrecognized arguments?:?\s*(.+)", line)
+            if m and any(tok and tok in verify_cmd for tok in m.group(1).split()):
+                matched.append("argparse_unrecognized")
+                break
+    return matched
+
+
+def phase_preflight(
+    phase: Phase,
+    repo: Path,
+    evidence_path: Path,
+    budget_seconds: int = PREFLIGHT_BUDGET_SECONDS,
+) -> dict[str, Any]:
+    """Run phase verify_cmd against baseline with fail-fast classification.
+
+    Returns the evidence dict that is also written to evidence_path.
+    """
+    started = datetime.now(timezone.utc)
+
+    skip, skip_reason = should_skip_preflight(phase)
+    if skip:
+        evidence = {
+            "phase": phase.name,
+            "ran_at": started.isoformat(),
+            "duration_seconds": 0.0,
+            "result": "SKIPPED",
+            "exit_code": None,
+            "fatal_signals_matched": [],
+            "sub_reason": skip_reason,
+            "verify_cmd_text": phase.verify_cmd,
+            "stderr_tail": "",
+            "stdout_tail": "",
+            "pre_head_sha": None,
+            "post_reset_porcelain_empty": True,
+        }
+        atomic_write_json(evidence_path, evidence)
+        return evidence
+
+    pre_head = run(["git", "rev-parse", "HEAD"], repo).stdout.strip()
+    porcelain = run(["git", "status", "--porcelain"], repo).stdout
+    if porcelain.strip():
+        evidence = {
+            "phase": phase.name,
+            "ran_at": started.isoformat(),
+            "duration_seconds": 0.0,
+            "result": "FATAL_PLAN_DEFECT",
+            "exit_code": None,
+            "fatal_signals_matched": ["baseline_dirty"],
+            "sub_reason": "baseline_dirty",
+            "verify_cmd_text": phase.verify_cmd,
+            "stderr_tail": _tail_lines(porcelain),
+            "stdout_tail": "",
+            "pre_head_sha": pre_head,
+            "post_reset_porcelain_empty": False,
+        }
+        atomic_write_json(evidence_path, evidence)
+        return evidence
+
+    stdout = ""
+    stderr = ""
+    exit_code = 0
+    timed_out = False
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", phase.verify_cmd],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=budget_seconds,
+        )
+        exit_code = proc.returncode
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+    except subprocess.TimeoutExpired as exc:
+        timed_out = True
+        exit_code = 124
+        stdout = (exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")) or ""
+        stderr = (exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")) or ""
+
+    duration = (datetime.now(timezone.utc) - started).total_seconds()
+
+    # Reset working tree regardless of outcome
+    run(["git", "reset", "--hard", pre_head], repo, check=False)
+    run(["git", "clean", "-fd", "-e", ".longtask/"], repo, check=False)
+    post_porcelain = run(["git", "status", "--porcelain"], repo).stdout
+    porcelain_clean = not post_porcelain.strip()
+
+    if not porcelain_clean:
+        evidence = {
+            "phase": phase.name,
+            "ran_at": started.isoformat(),
+            "duration_seconds": duration,
+            "result": "FATAL_PLAN_DEFECT",
+            "exit_code": exit_code,
+            "fatal_signals_matched": ["preflight_residue"],
+            "sub_reason": "preflight_residue",
+            "verify_cmd_text": phase.verify_cmd,
+            "stderr_tail": _tail_lines(stderr),
+            "stdout_tail": _tail_lines(stdout),
+            "pre_head_sha": pre_head,
+            "post_reset_porcelain_empty": False,
+        }
+        atomic_write_json(evidence_path, evidence)
+        return evidence
+
+    fatal = classify_preflight(exit_code, stderr, timed_out, phase.verify_cmd)
+    if fatal:
+        result = "FATAL_PLAN_DEFECT"
+    elif timed_out:
+        result = "INCONCLUSIVE"
+    elif exit_code == 0:
+        result = "UNEXPECTED_PASS"
+    else:
+        result = "EXPECTED_RED"
+
+    evidence = {
+        "phase": phase.name,
+        "ran_at": started.isoformat(),
+        "duration_seconds": duration,
+        "result": result,
+        "exit_code": exit_code,
+        "fatal_signals_matched": fatal,
+        "sub_reason": None,
+        "verify_cmd_text": phase.verify_cmd,
+        "stderr_tail": _tail_lines(stderr),
+        "stdout_tail": _tail_lines(stdout),
+        "pre_head_sha": pre_head,
+        "post_reset_porcelain_empty": porcelain_clean,
+    }
+    atomic_write_json(evidence_path, evidence)
+    return evidence
+
+
 def phase_by_name(phases: list[Phase], name: str) -> int:
     for index, phase in enumerate(phases):
         if phase.name == name:
@@ -533,6 +717,43 @@ def main() -> int:
         print(f"== {phase.name} starting: {phase.goals or phase.title}")
         phase_state.update({"status": "RUNNING", "started_at": now_iso(), "rounds": 0})
         atomic_write_json(state_path, state)
+
+        # Phase preflight (Step 6.0) — classify baseline verify_cmd outcome before
+        # spending any codex tokens on this phase. See SKILL.md § "Phase Preflight".
+        preflight_path = reports_dir / f"{phase.name}-preflight.json"
+        preflight = phase_preflight(phase, repo, preflight_path)
+        phase_state["preflight"] = {
+            "result": preflight["result"],
+            "exit_code": preflight["exit_code"],
+            "fatal_signals_matched": preflight["fatal_signals_matched"],
+            "sub_reason": preflight.get("sub_reason"),
+            "evidence_path": str(preflight_path),
+            "duration_seconds": preflight["duration_seconds"],
+        }
+        atomic_write_json(state_path, state)
+        print(
+            f"   preflight: {preflight['result']}"
+            + (f" signals={preflight['fatal_signals_matched']}" if preflight["fatal_signals_matched"] else "")
+        )
+
+        if preflight["result"] == "FATAL_PLAN_DEFECT":
+            sub = preflight.get("sub_reason") or ", ".join(preflight["fatal_signals_matched"])
+            phase_state.update(
+                {
+                    "status": "BLOCKED",
+                    "reason": "BLOCKED_PLAN_DEFECT",
+                    "detail": (
+                        f"preflight detected plan defect ({sub}); verify_cmd cannot start "
+                        f"from repo root. Evidence: {preflight_path}. Fix the plan's verify_cmd "
+                        f"(typical: cd into the project subdir, swap `tsc -b` for `tsc --project`, "
+                        f"or gate ssh lines with preflight_skip: true) and rerun with --resume."
+                    ),
+                    "preflight_evidence": str(preflight_path),
+                }
+            )
+            atomic_write_json(state_path, state)
+            print(f"{phase.name} BLOCKED_PLAN_DEFECT: {sub} (see {preflight_path})")
+            return 1
 
         passed = False
         for round_no in range(1, phase.max_retry_rounds + 1):

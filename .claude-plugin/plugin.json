@@ -1,0 +1,12 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "claude-longtask-harness",
+  "version": "0.3.0",
+  "description": "Dual-harness longtask workflow with canonical Claude skills and Codex handoff support.",
+  "author": {
+    "name": "HannibalLeo"
+  },
+  "repository": "https://github.com/HannibalLeo/longtask-skill",
+  "license": "See LICENSE",
+  "homepage": "https://github.com/HannibalLeo/longtask-skill"
+}

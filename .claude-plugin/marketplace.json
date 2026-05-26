@@ -1,4 +1,5 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "longtask-skill",
   "owner": {
     "name": "HannibalLeo"
@@ -7,12 +8,11 @@
     "description": "Claude-facing discovery registry for canonical longtask skills in the dual-harness layout.",
     "homepage": "https://github.com/HannibalLeo/longtask-skill"
   },
-  "authority_scope": "claude-plugin-discovery-only",
   "plugins": [
     {
       "name": "claude-longtask-harness",
       "version": "0.3.0",
-      "source": ".",
+      "source": "./",
       "description": "Discovery source for Claude canonical skills: claude-longtask, claude-longtask-plan, claude-longtask-code, claude-longtask-review."
     }
   ]

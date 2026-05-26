@@ -4,6 +4,32 @@ Orchestrator decision-loop tightening, oldest first.
 
 ---
 
+## 2026-05-26 (v0.2.0) — Plugin restructure: 1 → 3 skills, single-repo marketplace
+
+**Breaking layout change.** The repo is now a self-hosting Claude Code marketplace + plugin:
+
+- Repo root (`HannibalLeo/longtask-skill`) carries `.claude-plugin/marketplace.json`. Marketplace name: `longtask-skill`.
+- Plugin payload lives in `plugin/` (with `package.json`, `skills/`, `prompts/`, `schemas/`, `lib/`).
+- Three skills under `plugin/skills/`:
+  - `longtask` — full pipeline (Steps 0-9). Continuation of the v0.1.x bare-name skill.
+  - `longtaskPlan` — Steps 0-5 only (spec → validated plan); writes a handoff manifest at `.longtask/state/{spec}/plan-only-handoff.json`. State mode: `claude-hybrid-plan-only`.
+  - `longtaskCode` — Steps 6-9 only (execute plan → ship). Accepts the handoff manifest or a plan path directly; if no prior plan-integrity gate was recorded, runs Step 5 inline once at Step 6 startup as a precondition. State mode: `claude-hybrid` (resumed from plan-only) or `claude-hybrid-code-only` (direct).
+
+**Migration**: previous bare-name installs at `~/.claude/skills/longtask/` (and the two sibling sub-skill dirs from v0.1.3) are obsolete. Install path:
+
+```text
+/plugin marketplace add HannibalLeo/longtask-skill
+/plugin install longtask@longtask-skill
+```
+
+Invocations change: `/longtask` → `/longtask:longtask`; the sub-skills become `/longtask:longtaskPlan` and `/longtask:longtaskCode`.
+
+**Internal contract**: all paths inside SKILL.md files now resolve **relative to the plugin root** (`~/.claude/plugins/cache/longtask-skill/longtask/<version>/`). The parent SKILL.md's prompt/schema/lib paths are documented with this anchor; sub-skill SKILL.md files use `../../prompts/` style paths.
+
+No prompt or schema content changed — purely a packaging refactor. v0.1.3 functionality (third-pass plan-roundtable, tier scheme, hybrid-only roundtable mode) is preserved.
+
+---
+
 ## 2026-05-26 — Stop asking the user about v2 schema gaps and roundtable mode
 
 Three changes:

@@ -1,0 +1,20 @@
+{
+  "name": "longtask",
+  "version": "0.2.0",
+  "description": "Multi-phase spec execution pipeline — Claude opus orchestrator + Codex GPT-5.5 worker/verifier via codex exec, with hybrid Claude+Codex judgment gates and two-stage roundtable (spec + plan). Three skills: longtask (full), longtaskPlan (Steps 0-5), longtaskCode (Steps 6-9).",
+  "author": "HannibalLeo",
+  "license": "See LICENSE",
+  "homepage": "https://github.com/HannibalLeo/longtask-skill",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HannibalLeo/longtask-skill.git"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "spec-execution",
+    "hybrid-orchestration",
+    "roundtable",
+    "plan-writer"
+  ]
+}

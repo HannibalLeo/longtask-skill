@@ -1,0 +1,18 @@
+{
+  "name": "longtask-skill",
+  "owner": {
+    "name": "HannibalLeo"
+  },
+  "metadata": {
+    "description": "Claude×Codex hybrid multi-phase spec execution pipeline — three operating modes (full / plan-only / code-only).",
+    "homepage": "https://github.com/HannibalLeo/longtask-skill"
+  },
+  "plugins": [
+    {
+      "name": "longtask",
+      "version": "0.2.0",
+      "source": "./plugin",
+      "description": "Multi-phase spec execution pipeline with Claude+Codex hybrid orchestration. Provides three skills: `longtask` (full pipeline), `longtaskPlan` (Steps 0-5 → validated plan), `longtaskCode` (Steps 6-9 → shipped code)."
+    }
+  ]
+}

@@ -414,46 +414,65 @@ Minimal example (one phase mid-run):
 
 ## Prompts and wrapper (file index)
 
+> **Path convention** — this skill is a plugin (`longtask` plugin in the
+> `longtask-skill` marketplace). All paths below are **relative to the plugin
+> root** (the directory containing `package.json`). At runtime that resolves to
+> `~/.claude/plugins/cache/longtask-skill/longtask/<version>/`. From this
+> SKILL.md's location (`skills/longtask/SKILL.md`) the plugin root is `../..`,
+> so e.g. `prompts/spec-classifier.md` lives at
+> `../../prompts/spec-classifier.md`.
+
 ```
-~/.claude/skills/longtask/
-├── SKILL.md                          # this file
-├── README.md / README.en.md          # quick-start (Chinese / English)
+<plugin-root>/                                # = ~/.claude/plugins/cache/longtask-skill/longtask/<version>/
+├── package.json                              # plugin manifest
+├── README.md / README.en.md                  # quick-start (Chinese / English)
+├── CHANGELOG.md                              # version history
+├── VERSION                                   # current version string
+├── LICENSE
 ├── lib/
-│   ├── codex-wrapper.sh              # stall-only wrapper, --json + --output-schema
-│   └── smoke.sh                      # static sanity check (schema parse + wrapper syntax)
+│   ├── codex-wrapper.sh                      # stall-only wrapper, --json + --output-schema
+│   └── smoke.sh                              # static sanity check (schema parse + wrapper syntax)
 ├── schemas/
-│   ├── verifier-result.schema.json   # phase verifier output
-│   ├── decision-review.schema.json   # decision-gate verdict
+│   ├── verifier-result.schema.json           # phase verifier output
+│   ├── decision-review.schema.json           # decision-gate verdict
 │   ├── plan-integrity-review.schema.json
-│   └── codex-clarification.schema.json # uncertainty clarification verdict
-└── prompts/
-    # === Orchestrator + per-phase ===
-    ├── claude-orchestrator.md        # main session checklist (Owner four-step + 9-step pipeline)
-    ├── claude-sub-agent.md           # per-phase Claude Agent prompt (schema-driven verifier)
-    # === Step 1-4b (a / b) ===
-    ├── spec-classifier.md            # Claude Agent — input classification + tier {0+1, 1+1, 2+1, 3+2}
-    ├── spec-roundtable.md            # Step 2 per-lens hybrid roundtable on source spec (skippable only at 0+1)
-    ├── spec-round-state.md           # spec-round-state editor (Claude Agent)
-    ├── spec-consensus-editor.md      # hybrid consensus → enhanced-spec
-    ├── spec-codex-sanity.md          # Codex single-pass spec audit (unconditional Step 3)
-    ├── plan-writer.md                # Step 4 — Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
-    ├── plan-roundtable.md            # Step 4b per-lens hybrid roundtable on the implementation plan (ALWAYS RUN, plan_rounds ≥ 1; same lens routing as spec-roundtable, different question focus: phase decomposition, verifier observability, risk surfaces)
-    ├── plan-round-state.md           # plan-round-state editor (Claude Agent)
-    ├── plan-consensus-editor.md      # hybrid consensus that revises plan.md in place (preserves frontmatter sha256 chain)
-    # === Step 5 / 6 / 8 hybrid gates ===
-    ├── plan-integrity-review.md      # hybrid: Claude primary + Codex secondary
-    ├── decision-review.md            # hybrid: Claude primary + Codex secondary
-    ├── final-alignment-review.md     # hybrid: MANDATORY DUAL
-    # === Step 6 codex children ===
-    ├── codex-worker.md               # codex exec (writes code)
-    ├── codex-verifier.md             # codex exec --output-schema (JSON verdict)
-    ├── codex-worker-retry.md         # carries prior verifier JSON
-    # === Step 7 ===
-    ├── final-e2e2-report.md          # Claude Agent (gstack browse / screenshots; proactive residual-risk flagging)
-    # === Cross-cutting ===
-    ├── codex-clarification.md        # one-shot codex tie-breaker before any uncertainty-driven ASK_HUMAN
-    └── known-traps-appendix.md       # 5 categories of execution-environment traps
+│   ├── codex-clarification.schema.json       # uncertainty clarification verdict
+│   └── state-example.json                    # reference example of .longtask/state/{spec}.json
+├── prompts/
+│   # === Orchestrator + per-phase ===
+│   ├── claude-orchestrator.md                # main session checklist (Owner four-step + 9+1 pipeline)
+│   ├── claude-sub-agent.md                   # per-phase Claude Agent prompt (schema-driven verifier)
+│   # === Step 1-4b (a / b) ===
+│   ├── spec-classifier.md                    # Claude Agent — input classification + tier {0+1, 1+1, 2+1, 3+2}
+│   ├── spec-roundtable.md                    # Step 2 per-lens hybrid roundtable on source spec (skippable only at 0+1)
+│   ├── spec-round-state.md                   # spec-round-state editor (Claude Agent)
+│   ├── spec-consensus-editor.md              # hybrid consensus → enhanced-spec
+│   ├── spec-codex-sanity.md                  # Codex single-pass spec audit (unconditional Step 3)
+│   ├── plan-writer.md                        # Step 4 — Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
+│   ├── plan-roundtable.md                    # Step 4b per-lens hybrid roundtable on the implementation plan (ALWAYS RUN, plan_rounds ≥ 1)
+│   ├── plan-round-state.md                   # plan-round-state editor (Claude Agent)
+│   ├── plan-consensus-editor.md              # hybrid consensus that revises plan.md in place (preserves frontmatter sha256 chain)
+│   # === Step 5 / 6 / 8 hybrid gates ===
+│   ├── plan-integrity-review.md              # hybrid: Claude primary + Codex secondary
+│   ├── decision-review.md                    # hybrid: Claude primary + Codex secondary
+│   ├── final-alignment-review.md             # hybrid: MANDATORY DUAL
+│   # === Step 6 codex children ===
+│   ├── codex-worker.md                       # codex exec (writes code)
+│   ├── codex-verifier.md                     # codex exec --output-schema (JSON verdict)
+│   ├── codex-worker-retry.md                 # carries prior verifier JSON
+│   # === Step 7 ===
+│   ├── final-e2e2-report.md                  # Claude Agent (gstack browse / screenshots; proactive residual-risk flagging)
+│   # === Cross-cutting ===
+│   ├── codex-clarification.md                # one-shot codex tie-breaker before any uncertainty-driven ASK_HUMAN
+│   └── known-traps-appendix.md               # 5 categories of execution-environment traps
+└── skills/
+    ├── longtask/SKILL.md                     # this file — full pipeline (Steps 0-9)
+    ├── longtaskPlan/SKILL.md                 # subset — Steps 0-5 (plan-only)
+    └── longtaskCode/SKILL.md                 # subset — Steps 6-9 (execute a validated plan)
 ```
+
+Invocation namespacing (plugin → skill): `/longtask:longtask`,
+`/longtask:longtaskPlan`, `/longtask:longtaskCode`.
 
 ## Project-specific tuning — convention-based context injection
 

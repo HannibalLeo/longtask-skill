@@ -1,0 +1,8 @@
+{
+  "name": "longtask-codex-extension",
+  "version": "0.3.0",
+  "authoritative": false,
+  "status": "provisional",
+  "authority_note": "P1 discovery keeps Codex extension metadata non-authoritative until runtime authority is proven.",
+  "discovery_ref": "docs/decisions/codex-discovery.md"
+}

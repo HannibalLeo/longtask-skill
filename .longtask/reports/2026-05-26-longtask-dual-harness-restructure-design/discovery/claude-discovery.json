@@ -1,0 +1,13 @@
+{
+  "phase": "P1",
+  "marketplace_path": ".claude-plugin/marketplace.json",
+  "marketplace_authority_scope": "claude-plugin-discovery-only",
+  "exposed_claude_skills": [
+    "claude-longtask",
+    "claude-longtask-plan",
+    "claude-longtask-code",
+    "claude-longtask-review"
+  ],
+  "real_home_mutated": false,
+  "blocking_before_release": false
+}

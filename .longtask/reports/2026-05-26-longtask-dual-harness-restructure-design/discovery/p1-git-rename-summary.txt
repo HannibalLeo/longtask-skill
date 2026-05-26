@@ -1,0 +1,37 @@
+ create mode 100644 VERSION
+ rename {plugin => claude}/lib/codex-wrapper.sh (100%)
+ rename {plugin => claude}/lib/smoke.sh (100%)
+ rename {plugin => claude}/prompts/claude-orchestrator.md (100%)
+ rename {plugin => claude}/prompts/claude-sub-agent.md (100%)
+ rename {plugin => claude}/prompts/codex-clarification.md (100%)
+ rename {plugin => claude}/prompts/codex-verifier.md (100%)
+ rename {plugin => claude}/prompts/codex-worker-retry.md (100%)
+ rename {plugin => claude}/prompts/codex-worker.md (100%)
+ rename {plugin => claude}/prompts/decision-review.md (100%)
+ rename {plugin => claude}/prompts/final-alignment-review.md (100%)
+ rename {plugin => claude}/prompts/final-e2e2-report.md (100%)
+ rename {plugin => claude}/prompts/known-traps-appendix.md (100%)
+ rename {plugin => claude}/prompts/plan-consensus-editor.md (100%)
+ rename {plugin => claude}/prompts/plan-integrity-review.md (100%)
+ rename {plugin => claude}/prompts/plan-round-state.md (100%)
+ rename {plugin => claude}/prompts/plan-roundtable.md (100%)
+ rename {plugin => claude}/prompts/plan-writer.md (100%)
+ rename {plugin => claude}/prompts/spec-classifier.md (100%)
+ rename {plugin => claude}/prompts/spec-codex-sanity.md (100%)
+ rename {plugin => claude}/prompts/spec-consensus-editor.md (100%)
+ rename {plugin => claude}/prompts/spec-round-state.md (100%)
+ rename {plugin => claude}/prompts/spec-roundtable.md (100%)
+ create mode 100644 package.json
+ delete mode 100644 plugin/CHANGELOG.md
+ delete mode 100644 plugin/README.en.md
+ delete mode 100644 plugin/README.md
+ delete mode 100644 plugin/VERSION
+ delete mode 100644 plugin/package.json
+ rename {plugin => shared}/schemas/codex-clarification.schema.json (100%)
+ rename {plugin => shared}/schemas/decision-review.schema.json (100%)
+ rename {plugin => shared}/schemas/plan-integrity-review.schema.json (100%)
+ rename {plugin => shared}/schemas/state-example.json (100%)
+ rename {plugin => shared}/schemas/verifier-result.schema.json (100%)
+ rename {plugin/skills/longtaskCode => skills/claude-longtask-code}/SKILL.md (100%)
+ rename {plugin/skills/longtaskPlan => skills/claude-longtask-plan}/SKILL.md (100%)
+ rename {plugin/skills/longtask => skills/claude-longtask}/SKILL.md (100%)

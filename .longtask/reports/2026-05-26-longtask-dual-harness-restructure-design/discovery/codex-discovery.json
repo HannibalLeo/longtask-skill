@@ -1,0 +1,18 @@
+{
+  "phase": "P1",
+  "install_policy": "manifest-deferred",
+  "codex_extension_authority": "provisional",
+  "real_home_mutated": false,
+  "source_copy": {
+    "from": "/Users/leoleon/.codex/skills/longtask",
+    "copied_paths": [
+      "SKILL.md",
+      "prompts/*.md",
+      "lib/*"
+    ],
+    "excluded": [
+      ".git/**"
+    ]
+  },
+  "blocking_before_release": false
+}

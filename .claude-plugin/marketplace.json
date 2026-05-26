@@ -4,15 +4,16 @@
     "name": "HannibalLeo"
   },
   "metadata": {
-    "description": "Claude×Codex hybrid multi-phase spec execution pipeline — three operating modes (full / plan-only / code-only).",
+    "description": "Claude-facing discovery registry for canonical longtask skills in the dual-harness layout.",
     "homepage": "https://github.com/HannibalLeo/longtask-skill"
   },
+  "authority_scope": "claude-plugin-discovery-only",
   "plugins": [
     {
-      "name": "longtask",
-      "version": "0.2.0",
-      "source": "./plugin",
-      "description": "Multi-phase spec execution pipeline with Claude+Codex hybrid orchestration. Provides three skills: `longtask` (full pipeline), `longtaskPlan` (Steps 0-5 → validated plan), `longtaskCode` (Steps 6-9 → shipped code)."
+      "name": "claude-longtask-harness",
+      "version": "0.3.0",
+      "source": ".",
+      "description": "Discovery source for Claude canonical skills: claude-longtask, claude-longtask-plan, claude-longtask-code, claude-longtask-review."
     }
   ]
 }

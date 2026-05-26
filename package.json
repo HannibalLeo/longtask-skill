@@ -1,0 +1,20 @@
+{
+  "name": "longtask",
+  "version": "0.3.0",
+  "description": "Dual-harness longtask repository with canonical Claude and Codex skill layout plus shared schema authority.",
+  "author": "HannibalLeo",
+  "license": "See LICENSE",
+  "homepage": "https://github.com/HannibalLeo/longtask-skill",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HannibalLeo/longtask-skill.git"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "spec-execution",
+    "dual-harness",
+    "shared-schemas",
+    "longtask"
+  ]
+}

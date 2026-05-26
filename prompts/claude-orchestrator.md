@@ -43,7 +43,7 @@ every PASS/FAIL and every BLOCKED_* escalation.
 - Source/input spec
 - Enhanced spec + spec-update document (when spec enhancement runs)
 - Round-state artifacts (one per round)
-- Preflight-skip document (when input is already a plan)
+- Round-1 sanity-pass artifact (for plan-shape inputs, in lieu of plan-writer)
 - Implementation plan / execution spec
 - Plan-integrity review JSON
 - `.longtask/state/<spec>.json`
@@ -69,22 +69,30 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
 
 ## Step 0 — Preflight
 
-1. Read the input document at `{spec_path}`.
-2. Validate frontmatter required fields:
-   - `source_spec_path` and `source_spec_sha256`
-   - `final_verify_cmd`
-   - `final_e2e2_cmd` (required; `final_smoke` is a deprecated alias — honor it but emit
-     a deprecation notice to the user)
-   - `final_report_path`
-   - Missing any required field → `BLOCKED_SPEC` immediately; do not proceed.
-3. Validate legacy compat fields: `gating`, `ship`, `docs_sync`, `inject_context` — honor
-   all of them; they are Claude-harness-native capabilities that must not be dropped.
-4. Check for unrelated dirty worktree files: `git status --porcelain`. Any untracked
+> **Key change from earlier drafts:** Step 0 does NOT enforce v2 frontmatter on
+> the input. The v2 schema (`source_spec_path`, `source_spec_sha256`,
+> `final_verify_cmd`, `final_e2e2_cmd`, `final_report_path`) is the contract
+> for the **execution plan** that plan-writer produces at Step 4, not for the
+> raw `source_spec` design doc the user typed in. Strict v2 validation moves to
+> Step 1 (for shapes that skip plan-writer) and Step 4 (for shapes that go
+> through plan-writer). This matches the spec-classifier → plan-writer pipeline.
+>
+> Do not ask the user "how should I handle the v2 schema gap?" — the answer is
+> always "let the pipeline produce the v2 plan".
+
+1. Read the input document at `{spec_path}`. Compute its sha256; store in state
+   as `input_sha256`. File unreadable → `BLOCKED_SPEC`.
+2. Honor legacy compat fields if present in input frontmatter: `gating`, `ship`,
+   `docs_sync`, `inject_context`. These are Claude-harness-native capabilities
+   that must not be dropped.
+3. Check for unrelated dirty worktree files: `git status --porcelain`. Any untracked
    or modified files outside `.longtask/` that are not spec-owned → warn user and stop.
-5. If `spec.gating` lists skill names, invoke each via the Skill tool before proceeding
+4. If `spec.gating` lists skill names, invoke each via the Skill tool before proceeding
    to Step 1. Any gating skill FAIL → stop, do not proceed.
-6. Write initial state file at `.longtask/state/{spec_basename}.json` with schema v2
-   fields (see State File Schema section).
+5. Write initial state file at `.longtask/state/{spec_basename}.json` with schema v2
+   fields (see State File Schema section). Strict v2 frontmatter fields stay
+   `null` in state until Step 1 (plan-shape inputs) or Step 4 (source_spec /
+   hybrid inputs) populates them.
 
 ---
 
@@ -95,37 +103,71 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
    ```json
    {
      "input_shape": "source_spec | hybrid | self_contained_plan | plan_with_source",
-     "discussion_rounds": 0,
+     "discussion_rounds": 1,
+     "suggested_roundtable_mode": "hybrid | dual | claude_only | codex_only",
      "required_lenses": [],
      "risk_reasons": []
    }
    ```
+   `discussion_rounds` must be one of `{1, 3, 5}` (no intermediate values; no zero —
+   every spec gets at least one round of multi-lens scrutiny).
+   `suggested_roundtable_mode` is required; missing field → re-dispatch classifier
+   once with a reminder, then `BLOCKED_AGENT_TOOL_FAILURE` if still missing.
 3. Persist to `state.classification_path`.
-4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} → write preflight-skip
-   document at `.longtask/reports/{spec}/preflight-skip.md`; skip Step 2 (Roundtable)
-   and jump directly to **Step 3 (Codex Spec Sanity Audit — unconditional)**.
-5. `input_shape` ∈ {`source_spec`, `hybrid`} → continue to Step 2.
+4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} →
+   - **Plan-shape strict frontmatter check (moved from Step 0):** the input is
+     about to skip plan-writer, so it MUST already carry the v2 execution
+     contract. Validate frontmatter for `source_spec_path`,
+     `source_spec_sha256`, `final_verify_cmd`, `final_e2e2_cmd`,
+     `final_report_path`. Missing any → `BLOCKED_SPEC` with a concrete diff
+     showing the missing fields. Honor `final_smoke` as a deprecated alias of
+     `final_e2e2_cmd` (emit deprecation notice).
+   - Plan-shape inputs **still run Step 2** (single-round sanity pass — see Step 2).
+     Plan-writer (Step 4) is skipped for these shapes, but the one-round
+     roundtable is unconditional.
+5. `input_shape` ∈ {`source_spec`, `hybrid`} → continue to Step 2. v2 frontmatter
+   on the input is NOT required at this stage; plan-writer (Step 4) will
+   generate a v2-formatted execution plan, and Step 4's validation will enforce
+   the v2 schema on plan-writer's output.
 
 ---
 
-## Step 2 — Roundtable (conditional)
+## Step 2 — Roundtable (unconditional, minimum 1 round)
 
-Skip entirely if `input_shape` ∈ {`plan_with_source`, `self_contained_plan`}.
+Step 2 always runs. Round count is set by classifier's `discussion_rounds` ∈
+`{1, 3, 5}` (plan shapes and low-risk inputs run a single sanity-pass round;
+medium risk runs 3; only high-risk triggers cited in `risk_reasons` justify 5).
 
-**Roundtable mode** is controlled by `spec.roundtable_mode` (default: `hybrid`):
+**Roundtable mode resolution — strict precedence, do NOT ask the user:**
+
+```
+spec.roundtable_mode (frontmatter)  >  classifier.suggested_roundtable_mode  >  "hybrid"
+```
+
+1. If the input spec's frontmatter explicitly sets `roundtable_mode`, use it.
+2. Else if Step 1's classifier emitted `suggested_roundtable_mode`, use that.
+3. Else default to `"hybrid"`.
+
+Log the chosen value and the precedence step that produced it to state as
+`state.roundtable_mode_resolved` (e.g. `{value: "dual", source: "classifier"}`).
+This is an architectural decision the orchestrator makes from already-available
+signals — it is never an ASK_HUMAN.
+
+**Mode semantics:**
 - `hybrid` — Engineering / Design / UI-design lenses → Claude Agent; CEO-product /
   Domain-expert lenses → codex exec.
 - `claude_only` — all lenses → Claude Agent.
 - `codex_only` — all lenses → codex exec.
 - `dual` — every lens runs both Claude Agent AND codex exec in parallel; round-state
-  editor surfaces cross-model disagreements. Use only for safety/data-loss/security/
-  clinical/regulatory specs, or when classifier sets `risk_reasons` ≥ 2.
+  editor surfaces cross-model disagreements. Auto-selected by classifier whenever
+  `risk_reasons` contain regulatory / clinical / safety / data-loss / security /
+  irreversible-migration triggers, or when `discussion_rounds == 5`.
 
 **Note:** `final-alignment-review` (Step 8) is always `dual` regardless of this field
 (决议 #2 exception clause).
 
-Run `discussion_rounds` rounds (minimum 1 for `source_spec`, 0 is not allowed unless
-`input_shape` skips roundtable entirely):
+Run `discussion_rounds` rounds (minimum 1 for any `input_shape`; zero is not a legal
+value — every spec gets at least one sanity-pass round):
 
 For each round:
 1. For each lens in `required_lenses`:
@@ -163,16 +205,26 @@ it ran, otherwise the raw input). Always runs — Step 2's optionality does NOT 
 3. Read the JSON output. Required fields: `verdict` ∈ {CLEAN, NEEDS_REVISION}, four
    finding arrays (omissions / hallucinations / internal_contradictions /
    reward_hacking_bait), `confidence`, `recommended_action`.
-4. Reconcile:
+4. Reconcile (prefer auto-loop over ASK_HUMAN; ASK_HUMAN is the last resort):
    - `verdict == CLEAN` → proceed to Step 4 with sanity report attached.
    - `verdict == NEEDS_REVISION` + `recommended_action == loop_to_consensus_editor`
      + Step 2 ran → re-dispatch consensus-editor with codex findings; cap at 1 loop;
      then re-run Step 3.
-   - `verdict == NEEDS_REVISION` + Step 2 did NOT run (preflight-skip) → either
-     `ASK_HUMAN` (default) or inject codex findings as "known concerns" into the
-     plan-writer prompt for Step 4 to address per-phase. Policy: ASK_HUMAN when
-     omissions[] has HIGH severity OR hallucinations[] non-empty.
-   - `verdict == NEEDS_REVISION` + `recommended_action == ask_human` → `ASK_HUMAN`.
+   - `verdict == NEEDS_REVISION` + plan-shape input (Step 4 plan-writer skipped) →
+     **default: inject codex findings as `known_concerns[]` directly onto the
+     submitted plan**; the consensus-editor re-runs over the plan and must address
+     each finding via a repair phase, an added DoD bullet on an existing phase, or
+     an explicit out-of-scope row with rationale (Step 5 plan-integrity-review
+     enforces this — `BLOCKED_SPEC_REWRITE` if missing). When codex flags
+     `hallucinations[]` non-empty AND any hallucination touches a categorical
+     high-risk category (security boundary / data-loss / irreversible migration /
+     external API contract / regulatory / production credentials), DO NOT silently
+     inject — instead **run the Uncertainty Clarification Round** (see section
+     below). PROCEED → inject `known_concerns[]` plus the clarification's
+     `residual_concerns[]`. ESCALATE → `ASK_HUMAN` with both perspectives attached.
+   - `verdict == NEEDS_REVISION` + `recommended_action == ask_human` →
+     **run the Uncertainty Clarification Round** before escalating. PROCEED → apply
+     the chosen action and persist clarification JSON. ESCALATE → `ASK_HUMAN`.
 5. Persist final `spec_codex_sanity_path` + `spec_codex_sanity_verdict` to state.
 
 **Why unconditional:** Step 2 (roundtable) is a Claude-heavy multi-perspective brainstorm.
@@ -192,16 +244,30 @@ against blind-spot reward hacking that survives Claude-only review.
      dispatches one Claude Agent **per phase** in parallel, then merges. Single-phase or
      2-phase plans stay single-agent. See `prompts/plan-writer.md` for the multi-agent
      dispatch contract.
+   - If Step 3 produced `known_concerns[]`, pass them in the prompt as required
+     inputs (see Step 3 reconciliation rule).
 2. Require the plan writer to produce one artifact at:
    `.longtask/plans/{spec_basename}-implementation-plan.md`
 3. Persist `implementation_plan_path` + sha256 to state.
-4. Validate: all source/input requirements must appear in the plan's alignment matrix,
+4. **v2 frontmatter validation on the generated plan** (the v2 schema check that
+   Step 0 used to do on the input — now done on plan-writer's OUTPUT, which is
+   the artifact actually consumed by Step 6 phase loop):
+   - Required top-level fields: `source_spec_path`, `source_spec_sha256`,
+     `final_verify_cmd`, `final_e2e2_cmd`, `final_report_path`.
+   - Per-phase required fields: `goals`, `file_scope`, `do_not_touch`,
+     `verify_cmd`, `verify_passes_when`, `dod`, `source_requirements`.
+   - Missing any → `BLOCKED_SPEC_REWRITE` with concrete diff; re-dispatch
+     plan-writer once with the diff, then escalate if still missing.
+   - `source_spec_path` must point at the original input `{spec_path}`;
+     `source_spec_sha256` must equal `state.input_sha256`. Mismatch →
+     `BLOCKED_SPEC_REWRITE` (plan-writer fabricated lineage).
+5. Validate: all source/input requirements must appear in the plan's alignment matrix,
    phase `source_requirements`, DoD, or an explicit out-of-scope row. Missing →
    `BLOCKED_SPEC_REWRITE`.
-5. If Step 3 surfaced any findings (CLEAN with minor gaps OR NEEDS_REVISION accepted by
-   user as "address per-phase"), require those findings to appear in plan as either:
-   (a) dedicated repair phase, (b) added dod bullets on relevant existing phases, or
-   (c) explicit out-of-scope row with rationale. Missing → `BLOCKED_SPEC_REWRITE`.
+6. If Step 3 surfaced `known_concerns[]`, require those concerns to appear in
+   plan as either: (a) dedicated repair phase, (b) added dod bullets on
+   relevant existing phases, or (c) explicit out-of-scope row with rationale.
+   Missing → `BLOCKED_SPEC_REWRITE`.
 
 ---
 
@@ -268,11 +334,130 @@ Invoked when a sub-agent returns `decision_options[]` instead of PASS/FAIL.
 4. Both run independently.
 5. Reconcile per 决议 #6:
    - Both agree → use that decision directly.
-   - Any `vetoes[]` non-empty → `ASK_HUMAN`.
+   - Any `vetoes[]` non-empty → `ASK_HUMAN` **immediately, no clarification round**
+     (vetoes are categorical — irreversible / security boundary / scope contract
+     break / regulatory / data-loss; no further model consultation removes them).
    - Disagree, no vetoes, confidence delta > 0.15, reversible option → higher-confidence wins.
-   - Otherwise → `ASK_HUMAN`.
+   - Disagree, no vetoes, confidence delta ≤ 0.15 (genuine uncertainty) →
+     **run the Uncertainty Clarification Round** (see section below).
+     PROCEED → use the clarification's `chosen_option` and persist the JSON.
+     ESCALATE → `ASK_HUMAN` with the clarification's reasoning + residual concerns
+     attached so the user sees the full chain.
+   - Otherwise → same Clarification Round → `ASK_HUMAN` on ESCALATE.
 6. `confidence >= 0.72` and no veto → auto-choose; pass chosen option to retry sub-agent.
-7. `ASK_HUMAN` → pause; present options and analysis to user; wait for instruction.
+7. `ASK_HUMAN` → pause; present options + both primary verdicts + clarification
+   verdict (if it ran) + residual concerns to user; wait for instruction.
+
+---
+
+## Uncertainty Clarification Round
+
+A safety insertion that fires immediately BEFORE any ASK_HUMAN that stems from
+model-vs-model uncertainty. The goal is to spend one extra Codex turn to break
+a tie when possible, so the user is only interrupted for genuine policy calls
+on high-risk paths.
+
+### When this round runs (orchestrator policy — auto, no user prompt)
+
+- **Step 3** — `verdict == NEEDS_REVISION` + `recommended_action == ask_human`
+- **Step 3** — `verdict == NEEDS_REVISION` + `hallucinations[]` non-empty + any
+  hallucination touches a categorical high-risk category
+- **Decision Gate** — primary and secondary disagree, no `vetoes[]`, confidence
+  delta ≤ 0.15 (or any other path that would otherwise default to `ASK_HUMAN`)
+
+### When this round does NOT run (still immediate ASK_HUMAN)
+
+- Any `vetoes[]` non-empty at Step 5 / Decision Gate / Step 8. Vetoes are
+  categorical — security boundary, data-loss, irreversible, regulatory, scope
+  contract break. No model consultation neutralizes them; the user must call it.
+- **Step 8 final-alignment-review** — already mandatory dual; clarification
+  would just be a third codex pass over the same evidence. The whole point of
+  the last-line-of-defense gate is to surface unresolved disagreement.
+- **Plan-integrity Step 5** when both verdicts already agree on FAIL (the
+  ESCALATE is mechanical: the plan doesn't cover the spec; clarification can't
+  fix that, plan-writer must).
+
+### Dispatch
+
+```bash
+bash lib/codex-wrapper.sh \
+  <prompt-file-with-substitutions> \
+  clarification-{trigger}-{ts} \
+  $LONGTASK_DIR/schemas/codex-clarification.schema.json \
+  .longtask/state/{spec_basename}/clarification-{trigger}-{ts}.json
+```
+
+Prompt file is `prompts/codex-clarification.md` with these substitutions:
+- `{trigger}` — short label of where the uncertainty arose
+- `{primary_verdict_json}` — Claude primary verdict (for Decision Gate / Step 5)
+  or the codex sanity verdict (for Step 3)
+- `{secondary_verdict_json}` — Codex secondary verdict, or `{}` for Step 3
+  single-pass triggers
+- `{evidence_block}` — spec excerpt, options table, relevant verifier JSONs
+- `{would_ask_human_because}` — the specific reason the orchestrator was about
+  to escalate (helps codex stay focused)
+- `{output_path}` — the JSON sink listed in the wrapper invocation
+
+Single round. No nested clarification. Capped at 1 per uncertainty event;
+orchestrator never re-runs it on the same trigger.
+
+### Reconcile
+
+Read the JSON. Validate against `schemas/codex-clarification.schema.json`.
+
+Compute `effective_verdict`:
+- `effective_verdict = "ESCALATE"` if ANY:
+  - `verdict == "ESCALATE"`
+  - `high_risk_unresolved == true`
+  - `confidence < 0.75`
+  - `chosen_option == null` (when verdict claims PROCEED but no option given)
+- else `effective_verdict = "PROCEED"`.
+
+On `PROCEED`:
+- Apply `chosen_option`.
+- Append `residual_concerns[]` to state's persistent concern list so
+  final-alignment-review (Step 8) re-checks them.
+- Persist `state.uncertainty_clarifications[] += {trigger, verdict, effective_verdict, chosen_option, confidence, ts}`.
+- Continue the pipeline at the point that triggered the clarification.
+
+On `ESCALATE`:
+- `ASK_HUMAN`. The escalation message MUST include:
+  1. Original ASK_HUMAN reason (`{would_ask_human_because}`)
+  2. Primary verdict (one-line summary + `decision` field)
+  3. Secondary verdict (same, if applicable)
+  4. Clarification verdict + `reasoning` (this is the new information the user gets)
+  5. `residual_concerns[]` and `high_risk_unresolved` flag
+- Persist same record to `state.uncertainty_clarifications[]`.
+- Wait for user input.
+
+### Cost guardrail
+
+Each Clarification Round is one `codex exec` invocation (~30-90s depending on
+evidence size). No soft cap on per-spec count; trigger conditions are narrow
+enough that uncontrolled looping is impossible (each trigger is a distinct
+event; clarification itself cannot recurse). If a single phase's Decision Gate
+keeps triggering clarification across retry rounds, that's a phase-design
+problem to surface via `BLOCKED_SPEC_REWRITE`, not a runtime cap.
+
+### State trace
+
+```json
+{
+  "uncertainty_clarifications": [
+    {
+      "trigger": "step-3-codex-sanity-needs-revision-high-risk-hallucination",
+      "verdict": "PROCEED",
+      "effective_verdict": "PROCEED",
+      "chosen_option": "inject-with-residual-concerns",
+      "confidence": 0.82,
+      "high_risk_unresolved": false,
+      "residual_concerns": ["spec §4.2 step Y must appear in P2 DoD"],
+      "json_path": ".longtask/state/{spec}/clarification-step3-1729800000.json",
+      "ts": "2026-05-26T10:30:00Z"
+    }
+  ]
+}
+```
 
 ---
 

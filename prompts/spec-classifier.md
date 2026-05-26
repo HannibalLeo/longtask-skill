@@ -67,27 +67,82 @@ design, UI design, and an industry expert when the task direction calls for it.
 
 ## Discussion Rounds and Risk Assessment
 
-Set `discussion_rounds` according to decision #5 (variable-length roundtable):
+Set `discussion_rounds` according to decision #5 (revised — three-tier risk):
 
-- `plan_with_source` or `self_contained_plan` → **0** (skip roundtable entirely,
-  go directly to plan-integrity-review)
-- Low-risk `source_spec` → **1–2** (minor clarifications, low ambiguity, no
-  irreversible changes, no external API contracts)
-- High-risk or ambiguous `source_spec` → **5** (maximum rounds)
+The enum is **`{1, 3, 5}`**. There is no zero (every spec gets at least one round
+of multi-lens scrutiny) and no even values (3 and 5 are the only quorum sizes that
+proved stable in practice).
 
-High-risk triggers (set `discussion_rounds: 5` when any apply):
-- Irreversible data migration or schema change
+- **`plan_with_source` or `self_contained_plan` → 1** (sanity-check pass; the user
+  already submitted a plan, so one lens-wide review is enough to catch obvious
+  gaps before plan-writer runs)
+- **Low-risk `source_spec` or `hybrid` → 1** (minor clarifications, low ambiguity,
+  no irreversible changes, no external API contracts, narrow blast radius)
+- **Medium-risk `source_spec` or `hybrid` → 3** (default for non-trivial specs
+  that change cross-module contracts, introduce new dependencies, or modify
+  internal data schemas without external impact)
+- **High-risk `source_spec` or `hybrid` → 5** (only when at least one trigger
+  below fires)
+
+High-risk triggers (`discussion_rounds: 5`) — must cite at least one in
+`risk_reasons` to justify picking 5:
+
+- Irreversible data migration or destructive schema change
 - Regulatory, clinical, or patient-safety context
-- Security boundary change or authentication modification
-- Breaking API contract (external consumers affected)
-- Ambiguous requirements where misinterpretation is likely
-- Cross-module architectural change with broad blast radius
+- Security boundary change or authentication / authorization modification
+- Breaking external API contract (downstream consumers affected)
+- Cross-module architectural change with broad blast radius (>3 modules)
+
+**No lean-conservative bias.** Pick the bucket your evidence actually supports.
+If you are genuinely uncertain between low and medium, pick **medium (3)** and
+record the uncertainty in `risk_reasons` (e.g., `"ambiguous scope — defaulted to medium"`).
+The previous rule that escalated all uncertain specs to 5 was removed because
+rounds 4-5 showed diminishing returns; over-discussion has its own quality cost
+(lens fatigue, repetition).
 
 **Override rules**:
-- If the spec frontmatter contains `discussion_required: true`, you MUST output
-  `discussion_rounds: 5`. You cannot override this to a lower value.
-- You CANNOT force `discussion_rounds: 0` for a `source_spec` or `hybrid` shape,
-  even if you believe no discussion is needed. Minimum is 1 for those shapes.
+- There is no `discussion_required` frontmatter field — it was removed. To
+  force cross-model heterogeneity, set `roundtable_mode: dual` in the spec
+  frontmatter instead of inflating round count.
+- The minimum is **1**. You cannot emit `0`. The maximum is **5**. No
+  intermediate values (`2`, `4`) are accepted.
+
+## Roundtable Mode Suggestion (decision #2 + Roadmap)
+
+In addition to `discussion_rounds`, you MUST emit a `suggested_roundtable_mode`
+that orchestrator consults when `spec.roundtable_mode` is not explicitly set in
+spec frontmatter. The orchestrator's decision order is:
+
+```
+spec.roundtable_mode  >  classifier.suggested_roundtable_mode  >  "hybrid"
+```
+
+The orchestrator does NOT ask the user. Your suggestion is the second link of
+this chain — be deliberate.
+
+Rules for `suggested_roundtable_mode`:
+
+- `"dual"` — set this when ANY of the following apply (each is independently
+  sufficient):
+  - `risk_reasons` contains regulatory / clinical / patient-safety / data-loss /
+    security boundary / irreversible migration
+  - `task_direction` is medical, pharma, finance, legal, or any regulated industry
+  - the spec touches authentication, authorization, PHI/PII handling, or audit logs
+  - the spec proposes an external API contract change with downstream consumers
+- `"hybrid"` (default) — set this for non-regulated source_spec / hybrid inputs
+  where standard per-lens routing (engineering/design/ui-design → Claude,
+  ceo-product/domain-expert → Codex) gives sufficient heterogeneity
+- `"claude_only"` — only when you have strong reason to believe Codex is
+  unavailable for this run (rarely chosen by classifier — usually a spec-level
+  override)
+- `"codex_only"` — only when the spec explicitly requests cost-minimized review
+  (rarely chosen by classifier)
+
+**Tie-break with `discussion_rounds`**: if you set `discussion_rounds: 5`
+because of any high-risk trigger above, you MUST also set
+`suggested_roundtable_mode: "dual"`. The two signals are correlated — a 5-round
+spec running in `hybrid` mode wastes the per-round cost without the cross-model
+disagreement check that justifies the higher round count.
 
 Select `required_lenses` from:
 `["engineering", "ceo-product", "design", "ui-design", "domain-expert"]`
@@ -112,6 +167,7 @@ Write exactly one JSON object. It must be suitable to save at
     }
   ],
   "discussion_rounds": 5,
+  "suggested_roundtable_mode": "dual",
   "required_lenses": ["engineering", "ceo-product", "domain-expert"],
   "risk_reasons": [
     "irreversible data migration",
@@ -140,16 +196,23 @@ Write exactly one JSON object. It must be suitable to save at
 
 ### Field Definitions
 
-- `discussion_rounds: int` — Number of roundtable rounds to run (0, 1–2, or 5).
-  Determined by risk level as described above. Spec's `discussion_required: true`
-  forces 5. Cannot be forced to 0 for source_spec/hybrid shapes.
+- `discussion_rounds: int` — Number of roundtable rounds to run. Enum: `{1, 3, 5}`.
+  Determined strictly by risk level as described above. No `discussion_required`
+  override exists. Minimum is 1 (plan shapes and low-risk source_spec/hybrid),
+  maximum is 5 (high-risk only). No intermediate values (`0`, `2`, `4`) are
+  emitted.
+- `suggested_roundtable_mode: string` — One of
+  `["hybrid", "dual", "claude_only", "codex_only"]`. Orchestrator consults this
+  when `spec.roundtable_mode` is absent. MUST be `"dual"` whenever
+  `discussion_rounds == 5`. See "Roundtable Mode Suggestion" above for rules.
 - `required_lenses: [string]` — Subset of
   `["engineering","ceo-product","design","ui-design","domain-expert"]` needed for
-  this spec's roundtable. Empty array `[]` when `discussion_rounds == 0`.
-- `risk_reasons: [string]` — Concrete reasons that drove a high `discussion_rounds`
+  this spec's roundtable. Always non-empty (minimum 1 round always runs).
+- `risk_reasons: [string]` — Concrete reasons that drove the `discussion_rounds`
   value. Examples: `"irreversible data migration"`, `"regulatory/clinical"`,
-  `"security boundary change"`, `"API contract break"`, `"cross-module blast radius"`.
-  Empty array `[]` when `discussion_rounds <= 2`.
+  `"security boundary change"`, `"API contract break"`, `"cross-module blast radius"`,
+  `"ambiguous scope — defaulted to medium"`. Required when `discussion_rounds >= 3`;
+  may be empty `[]` only when `discussion_rounds == 1`.
 
 If the input is already a plan, set `run_spec_enhancement` and
 `run_plan_writer` to `false` only when the readiness standard for its shape is

@@ -59,7 +59,8 @@ PYEOF
 for schema in \
   "$SCHEMAS_DIR/verifier-result.schema.json" \
   "$SCHEMAS_DIR/decision-review.schema.json" \
-  "$SCHEMAS_DIR/plan-integrity-review.schema.json"
+  "$SCHEMAS_DIR/plan-integrity-review.schema.json" \
+  "$SCHEMAS_DIR/codex-clarification.schema.json"
 do
   if [ -f "$schema" ]; then
     check_schema "$schema"

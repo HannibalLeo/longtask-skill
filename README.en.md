@@ -4,11 +4,22 @@
 
 > Multi-phase spec execution pipeline. Claude opus runs as orchestrator and dispatches Claude Agents (architecture / discussion / judgment gates / final verification) plus `codex exec` GPT-5.5 children (code writing, schema-driven verifier JSON), following an Owner four-step division of labor.
 >
-> Full contract and field definitions live in [SKILL.md](SKILL.md). This is the quick-start.
+> Full contract and field definitions live in [SKILL.md](SKILL.md). Version history in [CHANGELOG.md](CHANGELOG.md). This is the quick-start.
+
+## 4 production-grade principles (this skill's working bar)
+
+Inspired by [Karpathy's engineering style](https://github.com/forrestchang/andrej-karpathy-skills); phrasing is ours:
+
+1. **Simplicity beats cleverness** — prefer boring straightforward code that a reader can grep once and understand. Delete a layer of indirection if it can go without losing function; three similar lines beat a premature abstraction.
+2. **Evals before optimization** — what cannot be measured cannot be improved. Every phase's `verify_cmd` makes PASS/FAIL mechanical, not narrative; "looks right to me" is not allowed.
+3. **Tight iteration over big leaps** — three small verifiable changes beat one large change that's right "in principle". The retry loop exists for this. A phase that needs a 500-line diff to verify is too coarse — split it.
+4. **Taste is part of "shippable"** — a green test does not mean production-ready. Read the diff at the end of each phase. Ugly code that passes is the next phase's pothole; naming, structure, and discipline are part of the bar.
+
+**Quality bar — non-negotiable.** No hidden defects, no minimal patches that paper over symptoms. Every decision serves "ships to real users", not "the test happens to be green".
 
 ## One line
 
-Write a spec → `/longtask <spec_path>` → the main session runs all 9 steps (preflight / classify / roundtable / **codex-spec-sanity** / plan-write / plan-integrity / per-phase / final-e2e2 / final-alignment); on all PASS optionally `/ship`.
+Write a spec → `/longtask <spec_path>` → the main session runs all 9+1 steps (preflight / classify / **spec-roundtable** / codex-spec-sanity / plan-write / **plan-roundtable** / plan-integrity / per-phase / final-e2e2 / final-alignment); on all PASS optionally `/ship`.
 
 ## Owner four-step division
 
@@ -53,34 +64,45 @@ dod:
 ## 9-step pipeline
 
 ```
-Step 0  Preflight         Validate frontmatter (source_spec_path / sha256 / final_verify_cmd
-                          / final_e2e2_cmd / final_report_path are required)
-Step 1  Classifier        Claude Agent → JSON {input_shape, discussion_rounds,
-                          required_lenses, risk_reasons}
-Step 2  Roundtable        (conditional) N rounds × 5 lenses hybrid discussion +
-                          round-state editor + consensus editor. Skipped when
-                          input_shape ∈ {plan_with_source, self_contained_plan}
-Step 3  Codex spec sanity (**UNCONDITIONAL**) codex exec --output-schema single pass:
-                          omissions / hallucinations / internal contradictions /
-                          reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}.
-                          Especially load-bearing when Step 2 was skipped — this is the
-                          only cross-model second opinion before plan-writer
-Step 4  Plan-writer       Claude Agent invokes superpowers:writing-plans → plan.md
-                          (**multi-agent dispatch** when plan has ≥3 phases)
-Step 5  Plan-integrity    HYBRID gate (Claude primary + Codex secondary) →
-                          PASS or BLOCKED_SPEC_REWRITE. Includes textual fidelity check:
-                          every REQ-* code block / signature / docstring in source spec
-                          must appear literally in plan goals + dod
-Step 6  Per-phase loop    For each Pn: sub-agent → codex-worker → scope gate →
-                          codex-verifier (schema JSON) → main-line JSON review →
-                          commit (docs_sync runs pre-commit if enabled)
-Step 7  Final E2E2        Claude Agent runs final_verify_cmd + final_e2e2_cmd →
-                          captures screenshots → writes final-report.md.
-                          Subagent MUST proactively flag residual risks to Step 8
-                          (stub screenshots, dod gaps, etc.)
-Step 8  Final-alignment   MANDATORY DUAL hybrid (Claude + Codex both required) →
-                          PASS or escalate
-Step 9  Ship (optional)   docs_sync → update-docs; ship → gstack /ship
+Step 0  Preflight          Validate frontmatter (source_spec_path / sha256 / final_verify_cmd
+                           / final_e2e2_cmd / final_report_path are required)
+Step 1  Classifier         Claude Agent → JSON {input_shape, spec_rounds, plan_rounds,
+                           required_lenses, risk_reasons, suggested_roundtable_mode}
+                           Picks one tier from {0+1, 1+1, 2+1, 3+2}
+Step 2  Spec-roundtable    spec_rounds × 5 lenses hybrid discussion + spec-round-state
+                           editor + spec-consensus-editor → enhanced-spec. **Skipped only
+                           at the 0+1 tier** (pre-vetted: input_shape ∈ {plan_with_source,
+                           self_contained_plan}, OR source_spec.gating already ran
+                           office-hours / plan-ceo-review / plan-eng-review in the same
+                           session)
+Step 3  Codex spec sanity  (**UNCONDITIONAL**) codex exec --output-schema single pass:
+                           omissions / hallucinations / internal contradictions /
+                           reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}.
+                           Especially load-bearing when Step 2 was skipped — this is the
+                           only cross-model second opinion before plan-writer
+Step 4  Plan-writer        Claude Agent invokes superpowers:writing-plans → plan.md
+                           (**multi-agent dispatch** when plan has ≥3 phases)
+Step 4b Plan-roundtable    plan_rounds × 5 lenses hybrid discussion on the implementation
+                           plan + plan-round-state editor + plan-consensus-editor
+                           (in-place rewrites plan.md). **ALWAYS RUN** (plan_rounds ≥ 1)
+                           — the plan is the concrete execution contract, must face one
+                           multi-lens pass before plan-integrity. Question focus: phase
+                           decomposition, verifier observability, cross-phase deps, risk
+                           surface
+Step 5  Plan-integrity     HYBRID gate (Claude primary + Codex secondary) →
+                           PASS or BLOCKED_SPEC_REWRITE. Includes textual fidelity check:
+                           every REQ-* code block / signature / docstring in source spec
+                           must appear literally in plan goals + dod
+Step 6  Per-phase loop     For each Pn: sub-agent → codex-worker → scope gate →
+                           codex-verifier (schema JSON) → main-line JSON review →
+                           commit (docs_sync runs pre-commit if enabled)
+Step 7  Final E2E2         Claude Agent runs final_verify_cmd + final_e2e2_cmd →
+                           captures screenshots → writes final-report.md.
+                           Subagent MUST proactively flag residual risks to Step 8
+                           (stub screenshots, dod gaps, etc.)
+Step 8  Final-alignment    MANDATORY DUAL hybrid (Claude + Codex both required) →
+                           PASS or escalate
+Step 9  Ship (optional)    docs_sync → update-docs; ship → gstack /ship
 ```
 
 ## Key design decisions
@@ -88,10 +110,10 @@ Step 9  Ship (optional)   docs_sync → update-docs; ship → gstack /ship
 | # | Decision | Implementation |
 |---|---|---|
 | 1 | Keep PTY workaround | `lib/codex-wrapper.sh` still wraps with `script -q /dev/null` to bypass codex#19945; `CODEX_LONGTASK_DISABLE_PTY=1` can disable it for testing |
-| 2 | Hybrid roundtable by default | spec may set `roundtable_mode: hybrid \| claude_only \| codex_only \| dual`; **final-alignment-review is always dual** regardless (last line of defense, cheap, runs once) |
+| 2 | Hybrid roundtable by default | spec may set `roundtable_mode: hybrid \| dual`; **final-alignment-review is always dual** regardless (last line of defense, cheap, runs once). `claude_only` / `codex_only` removed 2026-05-26 — single-model roundtable defeats the cross-model blindspot defense; if either side dispatch fails → `BLOCKED_*` instead of silent degradation |
 | 3 | Two-layer known-traps | (a) `prompts/known-traps-appendix.md` is the generic appendix (worker gets full text; verifier/decision-gate get checklist reference); (b) per-repo details flow through spec `inject_context.always` |
 | 4 | 10 BLOCKED enum codes | 6 inherited from Codex side + 4 Claude-specific. Full list in SKILL.md `## BLOCKED enum` |
-| 5 | Variable-length roundtable | classifier emits `discussion_rounds` derived from `input_shape` + risk (0 / 1-2 / 5); `discussion_required: true` in spec forces 5 rounds (cannot force 0) |
+| 5 | Two-stage roundtable, 4 tiers of total rounds | classifier emits `(spec_rounds, plan_rounds)` picking one tier: **0+1** (pre-vetted) / **1+1** (default low-risk) / **2+1** (medium — cross-module contracts, new deps, phase count ≥4) / **3+2** (high — regulatory / clinical / data-loss / security / irreversible-migration; also forces `dual`). **`plan_rounds ≥ 1` is non-negotiable** — the plan is the final execution contract. Both stages require Codex + Claude lenses simultaneously; either-side dispatch failure → `BLOCKED_*` |
 | 6 | Confidence + veto reconciliation | Verdicts agree → use; any `vetoes[]` → ASK_HUMAN; confidence delta > 0.15 + local/reversible/inside-spec → higher confidence wins; otherwise ASK_HUMAN. No third-arbiter LLM by default |
 | 7 | Default gpt-5.5 / xhigh | `CODEX_LONGTASK_MODEL=gpt-5.5` / `CODEX_LONGTASK_REASONING=xhigh`; fallback to 5.4/high must log `state.model_requests[].model_degraded` |
 | 8 | Repo provenance TBD | Claude-end and Codex-end both track `HannibalLeo/longtask-skill.git`; push policy is owner's decision |

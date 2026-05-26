@@ -1,0 +1,92 @@
+{
+  "_comment": "Reference example for .longtask/state/{spec_basename}.json. See SKILL.md '## State file (v2 schema)' for the field table; this file is the long-form example previously embedded in SKILL.md.",
+
+  "mode": "claude-hybrid",
+  "spec_path": "...",
+  "spec_sha256": "...",
+  "input_path": "<source_spec_path>",
+  "input_sha256": "<source_spec_sha256>",
+  "input_shape": "source_spec | hybrid | plan_with_source | self_contained_plan",
+  "classification_path": ".longtask/state/{spec_basename}/classification.json",
+  "enhanced_spec_path": ".longtask/state/{spec_basename}/enhanced-spec.md",
+  "enhanced_spec_sha256": "...",
+  "spec_update_path": ".longtask/state/{spec_basename}/spec-update.md",
+  "preflight_skip_path": null,
+  "spec_round_state_paths": [".longtask/state/{spec_basename}/spec-round-1.json", "..."],
+  "implementation_plan_path": ".longtask/state/{spec_basename}/plan.md",
+  "implementation_plan_sha256": "...",
+  "plan_round_state_paths": [".longtask/state/{spec_basename}/plan-round-1.json", "..."],
+  "implementation_plan_post_roundtable_sha256": "...",
+  "plan_integrity_review_path": ".longtask/state/{spec_basename}/plan-integrity.json",
+
+  "model_requests": [
+    {
+      "role": "phase-worker-P1-r1",
+      "requested": "gpt-5.5/xhigh",
+      "actual": "gpt-5.4/high",
+      "reason": "model unavailable",
+      "model_degraded": true
+    }
+  ],
+
+  "agents": [
+    {
+      "agent_id": "...",
+      "role": "phase-sub-agent",
+      "phase": "P1",
+      "round": 0,
+      "start_at": "...",
+      "end_at": "..."
+    }
+  ],
+
+  "claude_subagents": [
+    {
+      "id": "claude-<uuid>",
+      "role": "decision-review-primary",
+      "model": "opus",
+      "phase": "P3",
+      "start_at": "...",
+      "end_at": "..."
+    }
+  ],
+  "codex_subagents": [
+    {
+      "id": "codex-<thread_id>",
+      "role": "spec-classifier",
+      "model": "gpt-5.5",
+      "reasoning": "xhigh",
+      "start_at": "...",
+      "end_at": "..."
+    }
+  ],
+  "hybrid_lens_assignments": {
+    "decision-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
+    "plan-integrity-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
+    "final-alignment-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
+    "spec-roundtable.round-1.engineering": ["claude-opus-primary"],
+    "spec-roundtable.round-1.ceo-product": ["codex-gpt5.5-primary"],
+    "plan-roundtable.round-1.engineering": ["claude-opus-primary"],
+    "plan-roundtable.round-1.ceo-product": ["codex-gpt5.5-primary"]
+  },
+
+  "phases": {
+    "P1": {
+      "status": "PASS | FAIL | BLOCKED_* | running",
+      "rounds_used": 2,
+      "verifier_json_paths": [
+        ".longtask/state/.../verifier-P1-r1.json",
+        ".longtask/state/.../verifier-P1-r2.json"
+      ],
+      "commit_sha": "...",
+      "last_heartbeat": "ISO 8601",
+      "heartbeats": [
+        { "at": "...", "event": "phase-start" },
+        { "at": "...", "event": "round-1-codex-worker-start" }
+      ]
+    }
+  },
+
+  "final_report_path": ".longtask/reports/.../final-report.md",
+  "final_alignment_review_path": ".longtask/state/.../final-alignment.json"
+}

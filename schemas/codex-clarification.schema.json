@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Uncertainty Clarification Verdict",
+  "description": "One-shot codex consultation invoked by the Claude orchestrator immediately before any ASK_HUMAN escalation that stems from model-vs-model uncertainty (not from a categorical safety veto). Output PROCEED to break the tie with a concrete chosen option; output ESCALATE to surface the unresolved uncertainty to the human.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "chosen_option",
+    "reasoning",
+    "residual_concerns",
+    "high_risk_unresolved",
+    "confidence"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PROCEED", "ESCALATE"],
+      "description": "PROCEED only when the clarification can confidently pick a path forward AND no high-risk category is in play. ESCALATE in every other case."
+    },
+    "chosen_option": {
+      "type": ["string", "null"],
+      "description": "When PROCEED, the option id (or short label) the orchestrator should take. Null when ESCALATE."
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Plain-language explanation. Must address (a) why the disagreement existed, (b) what evidence resolves it, and (c) why the chosen path is safe."
+    },
+    "residual_concerns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Concerns that remain even if PROCEED — these get logged to state and flagged in any future final-alignment audit. Empty array means none."
+    },
+    "high_risk_unresolved": {
+      "type": "boolean",
+      "description": "True iff any of the categories (security boundary, data loss, irreversible migration, regulatory/clinical, external API contract, production credentials) is in play and is NOT fully resolved by the chosen option. When true, orchestrator MUST escalate even if verdict says PROCEED — verdict is overridden."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Codex's self-rated confidence in the verdict. Orchestrator policy: confidence < 0.75 → treat as ESCALATE regardless of verdict field."
+    }
+  }
+}

@@ -21,7 +21,9 @@ The roundtable_mode field in the spec (or orchestrator) can override routing:
 
 The orchestrator reads `classification.required_lenses` and
 `classification.discussion_rounds` to determine which lenses to run and how
-many rounds. `discussion_rounds: 0` skips this prompt entirely.
+many rounds. `discussion_rounds` is one of `{1, 3, 5}` — Step 2 always runs at
+least one sanity-pass round (the previous "skip on plan-shape" branch was
+removed when the enum was tightened).
 
 Input parameters include `lens` and `lens_model` (claude|codex) so the
 invoking orchestrator can confirm which model is actually running this
@@ -49,7 +51,7 @@ original intent. Do not implement code. Do not ask the user for confirmation.
 ## Round
 
 Round: `{round_number}` (total rounds determined by classifier's
-`discussion_rounds` field — may be 1, 2, or 5)
+`discussion_rounds` field — one of `{1, 3, 5}`)
 
 Specialist role: `{specialist_role}`
 

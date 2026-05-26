@@ -1,0 +1,74 @@
+{
+  "case_id": "install-temp-home-backup-preserving-replacement",
+  "description": "With force-backup and backup-conflicts, foreign conflicts are backed up then replaced.",
+  "case_type": "temp_home_shell_script_case",
+  "script_path": "scripts/install-codex.sh",
+  "setup": {
+    "symlinks": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask",
+        "target": "{TEMP_ROOT}/foreign-a"
+      },
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask-code",
+        "target": "{TEMP_ROOT}/foreign-b"
+      }
+    ]
+  },
+  "env": {
+    "LONGTASK_BACKUP_STAMP": "fixture-backup-stamp"
+  },
+  "args": [
+    "--source-dir",
+    "{SOURCE_DIR}",
+    "--codex-home",
+    "{TEMP_CODEX_HOME}",
+    "--force-backup",
+    "--backup-conflicts"
+  ],
+  "real_home_probes": [
+    "{REAL_CODEX_HOME}/skills/codex-longtask",
+    "{REAL_CODEX_HOME}/skills/codex-longtask-code",
+    "{REAL_CODEX_HOME}/longtask-backups"
+  ],
+  "assert_real_home_unchanged": true,
+  "expected": {
+    "exit_code": 0,
+    "transcript": {
+      "codex_home": "{TEMP_CODEX_HOME}",
+      "source_dir": "{SOURCE_DIR}",
+      "action": "install",
+      "entries": [
+        {
+          "name": "codex-longtask",
+          "status": "BACKED_UP_CONFLICT",
+          "target": "{SOURCE_DIR}/skills/codex-longtask",
+          "backup": "{BACKUP_ROOT}/fixture-backup-stamp/codex-longtask.bak"
+        },
+        {
+          "name": "codex-longtask-code",
+          "status": "BACKED_UP_CONFLICT",
+          "target": "{SOURCE_DIR}/skills/codex-longtask-code",
+          "backup": "{BACKUP_ROOT}/fixture-backup-stamp/codex-longtask-code.bak"
+        }
+      ],
+      "next_verify_command": "bash scripts/run-fixtures.sh --group install-temp-home-safety"
+    }
+  },
+  "assert_fs": {
+    "path_exists": [
+      "{BACKUP_ROOT}/fixture-backup-stamp/codex-longtask.bak",
+      "{BACKUP_ROOT}/fixture-backup-stamp/codex-longtask-code.bak"
+    ],
+    "symlink_targets": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask",
+        "target": "{SOURCE_DIR}/skills/codex-longtask"
+      },
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask-code",
+        "target": "{SOURCE_DIR}/skills/codex-longtask-code"
+      }
+    ]
+  }
+}

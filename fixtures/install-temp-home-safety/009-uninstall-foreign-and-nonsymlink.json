@@ -1,0 +1,67 @@
+{
+  "case_id": "install-temp-home-uninstall-foreign-and-nonsymlink",
+  "description": "Uninstall keeps foreign symlink and non-symlink entries untouched.",
+  "case_type": "temp_home_shell_script_case",
+  "script_path": "scripts/uninstall-codex.sh",
+  "setup": {
+    "symlinks": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask",
+        "target": "{TEMP_ROOT}/foreign-live"
+      }
+    ],
+    "files": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask-code",
+        "content": "not-a-symlink\n"
+      }
+    ]
+  },
+  "args": [
+    "--source-dir",
+    "{SOURCE_DIR}",
+    "--codex-home",
+    "{TEMP_CODEX_HOME}"
+  ],
+  "real_home_probes": [
+    "{REAL_CODEX_HOME}/skills/codex-longtask",
+    "{REAL_CODEX_HOME}/skills/codex-longtask-code",
+    "{REAL_CODEX_HOME}/longtask-backups"
+  ],
+  "assert_real_home_unchanged": true,
+  "expected": {
+    "exit_code": 0,
+    "transcript": {
+      "codex_home": "{TEMP_CODEX_HOME}",
+      "source_dir": "{SOURCE_DIR}",
+      "action": "uninstall",
+      "entries": [
+        {
+          "name": "codex-longtask",
+          "status": "SKIPPED_FOREIGN",
+          "target": "{TEMP_ROOT}/foreign-live",
+          "backup": "null"
+        },
+        {
+          "name": "codex-longtask-code",
+          "status": "SKIPPED_NON_SYMLINK",
+          "target": "{TEMP_CODEX_HOME}/skills/codex-longtask-code",
+          "backup": "null"
+        }
+      ],
+      "next_verify_command": "bash scripts/run-fixtures.sh --group install-temp-home-safety"
+    }
+  },
+  "assert_fs": {
+    "path_exists": [
+      "{TEMP_CODEX_HOME}/skills/codex-longtask",
+      "{TEMP_CODEX_HOME}/skills/codex-longtask-code"
+    ],
+    "symlink_targets": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask",
+        "target": "{TEMP_ROOT}/foreign-live"
+      }
+    ]
+  }
+}

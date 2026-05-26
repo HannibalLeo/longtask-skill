@@ -70,7 +70,17 @@
     },
     "install-temp-home-safety": {
       "description": "Owned by P7+.",
-      "cases": []
+      "cases": [
+        "fixtures/install-temp-home-safety/001-clean-install.json",
+        "fixtures/install-temp-home-safety/002-idempotent-install.json",
+        "fixtures/install-temp-home-safety/003-install-dry-run.json",
+        "fixtures/install-temp-home-safety/004-conflict-refusal.json",
+        "fixtures/install-temp-home-safety/005-backup-preserving-replacement.json",
+        "fixtures/install-temp-home-safety/006-uninstall-owned-removal.json",
+        "fixtures/install-temp-home-safety/007-restore-backup-success.json",
+        "fixtures/install-temp-home-safety/008-restore-path-escape.json",
+        "fixtures/install-temp-home-safety/009-uninstall-foreign-and-nonsymlink.json"
+      ]
     },
     "wrapper-matrix": {
       "description": "Owned by P5+.",

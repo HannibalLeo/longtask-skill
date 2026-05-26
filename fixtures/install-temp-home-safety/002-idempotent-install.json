@@ -1,0 +1,53 @@
+{
+  "case_id": "install-temp-home-idempotent-install",
+  "description": "Re-running installer against owned symlinks is idempotent.",
+  "case_type": "temp_home_shell_script_case",
+  "script_path": "scripts/install-codex.sh",
+  "setup": {
+    "symlinks": [
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask",
+        "target": "{SOURCE_DIR}/skills/codex-longtask"
+      },
+      {
+        "path": "{TEMP_CODEX_HOME}/skills/codex-longtask-code",
+        "target": "{SOURCE_DIR}/skills/codex-longtask-code"
+      }
+    ]
+  },
+  "args": [
+    "--source-dir",
+    "{SOURCE_DIR}",
+    "--codex-home",
+    "{TEMP_CODEX_HOME}"
+  ],
+  "real_home_probes": [
+    "{REAL_CODEX_HOME}/skills/codex-longtask",
+    "{REAL_CODEX_HOME}/skills/codex-longtask-code",
+    "{REAL_CODEX_HOME}/longtask-backups"
+  ],
+  "assert_real_home_unchanged": true,
+  "expected": {
+    "exit_code": 0,
+    "transcript": {
+      "codex_home": "{TEMP_CODEX_HOME}",
+      "source_dir": "{SOURCE_DIR}",
+      "action": "install",
+      "entries": [
+        {
+          "name": "codex-longtask",
+          "status": "UNCHANGED",
+          "target": "{SOURCE_DIR}/skills/codex-longtask",
+          "backup": "null"
+        },
+        {
+          "name": "codex-longtask-code",
+          "status": "UNCHANGED",
+          "target": "{SOURCE_DIR}/skills/codex-longtask-code",
+          "backup": "null"
+        }
+      ],
+      "next_verify_command": "bash scripts/run-fixtures.sh --group install-temp-home-safety"
+    }
+  }
+}

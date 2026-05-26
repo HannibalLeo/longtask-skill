@@ -1,0 +1,226 @@
+{
+  "schema_version": "v1",
+  "scan_roots": [
+    "skills",
+    "claude",
+    "codex",
+    "shared",
+    "scripts",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "VERSION",
+    "package.json",
+    "codex-extension.json",
+    ".claude-plugin/marketplace.json"
+  ],
+  "excluded_roots": [
+    ".git/",
+    ".longtask/reports/",
+    "fixtures/**/tmp/",
+    "fixtures/**/temp/"
+  ],
+  "patterns": [
+    {
+      "id": "legacy_skill_dir_longtask",
+      "regex": "skills/longtask(?:/|\\\\b)"
+    },
+    {
+      "id": "legacy_skill_dir_longtask_plan",
+      "regex": "skills/longtaskPlan(?:/|\\\\b)"
+    },
+    {
+      "id": "legacy_skill_dir_longtask_code",
+      "regex": "skills/longtaskCode(?:/|\\\\b)"
+    },
+    {
+      "id": "legacy_plugin_root_path",
+      "regex": "(?:^|[^A-Za-z0-9_])plugin/"
+    },
+    {
+      "id": "legacy_codex_home_path",
+      "regex": "~/.codex/skills/longtask(?:/|\\\\b)"
+    },
+    {
+      "id": "legacy_claude_home_path",
+      "regex": "~/.claude/skills/longtask(?:/|\\\\b)"
+    }
+  ],
+  "counts_by_class": {
+    "forbidden_active_reference": 0,
+    "allowed_historical_reference": 9,
+    "allowed_non_authoritative_search_phrase": 7
+  },
+  "matches": [
+    {
+      "path": "docs/migration-from-v0.2.md",
+      "line": 103,
+      "text": "`longtaskPlan` / `longtaskCode` / `plugin/` \u7b49 legacy \u8bcd\u53ef\u4ee5\u4f5c\u4e3a\u5386\u53f2\u8bf4\u660e\u6216\u68c0\u7d22\u77ed\u8bed\u5b58\u5728\uff0c\u4f46\u4e0d\u80fd\u4f5c\u4e3a active executable \u8def\u5f84\u5951\u7ea6\u3002",
+      "pattern_ids": [
+        "legacy_plugin_root_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "migration_or_changelog_context"
+    },
+    {
+      "path": "scripts/scan-stale-references.sh",
+      "line": 67,
+      "text": "\".claude-plugin/marketplace.json\",",
+      "pattern_ids": [
+        "legacy_plugin_root_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "scanner_pattern_definition"
+    },
+    {
+      "path": "scripts/scan-stale-references.sh",
+      "line": 79,
+      "text": "{\"id\": \"legacy_plugin_root_path\", \"regex\": r\"(?:^|[^A-Za-z0-9_])plugin/\"},",
+      "pattern_ids": [
+        "legacy_plugin_root_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "scanner_pattern_definition"
+    },
+    {
+      "path": "scripts/scan-stale-references.sh",
+      "line": 99,
+      "text": "\"plugin/\",",
+      "pattern_ids": [
+        "legacy_plugin_root_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "scanner_pattern_definition"
+    },
+    {
+      "path": "skills/claude-longtask/SKILL.md",
+      "line": 421,
+      "text": "> SKILL.md's location (`skills/longtask/SKILL.md`) the plugin root is `../..`,",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "skills/claude-longtask/SKILL.md",
+      "line": 529,
+      "text": "This skill repo and the Codex-end equivalent (`~/.codex/skills/longtask/`) both track `git@github.com:HannibalLeo/longtask-skill.git`. Push policy is an open call between:",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_codex_home_path"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "codex/lib/codex-wrapper.sh",
+      "line": 10,
+      "text": "#   bash ~/.codex/skills/longtask/lib/codex-wrapper.sh \\",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_codex_home_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "comment_context_non_executable"
+    },
+    {
+      "path": "skills/codex-longtask/SKILL.md",
+      "line": 29,
+      "text": "[$longtask](/Users/leoleon/.codex/skills/longtask/SKILL.md) path/to/spec.md",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "skills/codex-longtask/SKILL.md",
+      "line": 570,
+      "text": "python3 ~/.codex/skills/longtask/lib/longtask-runner.py .longtask/plans/<spec>-implementation-plan.md --repo .",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_codex_home_path"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "claude/lib/smoke.sh",
+      "line": 2,
+      "text": "# Sanity smoke test for ~/.claude/skills/longtask/",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "comment_context_non_executable"
+    },
+    {
+      "path": "claude/lib/smoke.sh",
+      "line": 12,
+      "text": "#   bash ~/.claude/skills/longtask/lib/smoke.sh",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "comment_context_non_executable"
+    },
+    {
+      "path": "claude/lib/codex-wrapper.sh",
+      "line": 5,
+      "text": "# (~/.codex/skills/longtask/lib/codex-wrapper.sh) in the following ways:",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_codex_home_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "comment_context_non_executable"
+    },
+    {
+      "path": "claude/lib/codex-wrapper.sh",
+      "line": 36,
+      "text": "#   bash ~/.claude/skills/longtask/lib/codex-wrapper.sh \\",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_historical_reference",
+      "reason": "comment_context_non_executable"
+    },
+    {
+      "path": "claude/prompts/claude-sub-agent.md",
+      "line": 125,
+      "text": "bash ~/.claude/skills/longtask/lib/codex-wrapper.sh \"$PROMPT_FILE\" \"{Pn}-r{N}\" 2>&1 | tee \"$LOG_FILE\"",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "claude/prompts/claude-sub-agent.md",
+      "line": 204,
+      "text": "bash ~/.claude/skills/longtask/lib/codex-wrapper.sh \\",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    },
+    {
+      "path": "claude/prompts/claude-sub-agent.md",
+      "line": 206,
+      "text": "--output-schema ~/.claude/skills/longtask/schemas/verifier-result.schema.json \\",
+      "pattern_ids": [
+        "legacy_skill_dir_longtask",
+        "legacy_claude_home_path"
+      ],
+      "match_class": "allowed_non_authoritative_search_phrase",
+      "reason": "non_executable_markdown_text"
+    }
+  ]
+}

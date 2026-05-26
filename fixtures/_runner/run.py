@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -328,6 +330,187 @@ shift 2
         return not mismatches, details
 
 
+def _snapshot_path(path: Path) -> dict[str, Any]:
+    if path.is_symlink():
+        return {"exists": True, "type": "symlink", "target": os.readlink(path)}
+    if not path.exists():
+        return {"exists": False}
+    if path.is_file():
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        st = path.stat()
+        return {"exists": True, "type": "file", "size": st.st_size, "sha256": digest}
+    if path.is_dir():
+        entries: list[dict[str, Any]] = []
+        for root, dirs, files in os.walk(path):
+            root_path = Path(root)
+            for name in sorted(dirs + files):
+                full = root_path / name
+                rel = full.relative_to(path).as_posix()
+                if full.is_symlink():
+                    entries.append({"path": rel, "type": "symlink", "target": os.readlink(full)})
+                elif full.is_dir():
+                    entries.append({"path": rel, "type": "dir"})
+                else:
+                    st = full.stat()
+                    entries.append({"path": rel, "type": "file", "size": st.st_size})
+        return {"exists": True, "type": "dir", "entries": entries}
+    return {"exists": True, "type": "other"}
+
+
+def _parse_transcript(stdout_text: str) -> dict[str, Any]:
+    result: dict[str, Any] = {"entries": []}
+    entry_re = re.compile(r"^ENTRY name=([^ ]+) status=([^ ]+) target=([^ ]+) backup=([^ ]+)$")
+    next_re = re.compile(r"^NEXT verify_command=(.+)$")
+    for raw in stdout_text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("LONGTASK_CODEX_HOME="):
+            result["codex_home"] = line.split("=", 1)[1]
+            continue
+        if line.startswith("LONGTASK_SOURCE_DIR="):
+            result["source_dir"] = line.split("=", 1)[1]
+            continue
+        if line.startswith("ACTION "):
+            result["action"] = line.split(" ", 1)[1]
+            continue
+        entry_match = entry_re.match(line)
+        if entry_match:
+            result["entries"].append(
+                {
+                    "name": entry_match.group(1),
+                    "status": entry_match.group(2),
+                    "target": entry_match.group(3),
+                    "backup": entry_match.group(4),
+                }
+            )
+            continue
+        next_match = next_re.match(line)
+        if next_match:
+            result["next_verify_command"] = next_match.group(1)
+    return result
+
+
+def _run_case_temp_home_shell_script(case: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    script_path = (REPO_ROOT / case["script_path"]).resolve()
+    if not script_path.exists():
+        return False, {"error": "missing_script", "script_path": case["script_path"]}
+
+    real_home = Path(os.path.expanduser("~")).resolve()
+    real_codex_home = Path(os.environ.get("CODEX_HOME", str(real_home / ".codex"))).resolve()
+
+    with tempfile.TemporaryDirectory(prefix="install-temp-home-") as tmp:
+        tmp_root = Path(tmp)
+        temp_codex_home = tmp_root / "codex-home"
+        temp_codex_home.mkdir(parents=True, exist_ok=True)
+
+        tokens = {
+            "SOURCE_DIR": str(REPO_ROOT),
+            "TEMP_ROOT": str(tmp_root),
+            "TEMP_CODEX_HOME": str(temp_codex_home),
+            "BACKUP_ROOT": str(temp_codex_home / "longtask-backups"),
+            "REAL_HOME": str(real_home),
+            "REAL_CODEX_HOME": str(real_codex_home),
+        }
+
+        setup = _expand_tokens(case.get("setup", {}), tokens)
+        for d in setup.get("dirs", []):
+            (Path(d)).mkdir(parents=True, exist_ok=True)
+        for f in setup.get("files", []):
+            p = Path(f["path"])
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f.get("content", ""), encoding="utf-8")
+        for s in setup.get("symlinks", []):
+            p = Path(s["path"])
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if p.exists() or p.is_symlink():
+                p.unlink()
+            p.symlink_to(s["target"])
+
+        real_home_probes = [Path(p) for p in _expand_tokens(case.get("real_home_probes", []), tokens)]
+        probe_before = {p.as_posix(): _snapshot_path(p) for p in real_home_probes}
+
+        env = os.environ.copy()
+        env["HOME"] = str(tmp_root)
+        for key, value in _expand_tokens(case.get("env", {}), tokens).items():
+            env[str(key)] = str(value)
+
+        args = _expand_tokens(case.get("args", []), tokens)
+        cmd = ["bash", str(script_path), *args]
+        proc = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+
+        probe_after = {p.as_posix(): _snapshot_path(p) for p in real_home_probes}
+        real_home_unchanged = probe_before == probe_after
+
+        expected = _expand_tokens(case.get("expected", {}), tokens)
+        transcript = _parse_transcript(proc.stdout)
+        mismatches: list[str] = []
+
+        if "exit_code" in expected and proc.returncode != expected["exit_code"]:
+            mismatches.append(f"exit_code: expected {expected['exit_code']!r}, got {proc.returncode!r}")
+
+        expected_transcript = expected.get("transcript", {})
+        if expected_transcript:
+            for key in ("codex_home", "source_dir", "action", "next_verify_command"):
+                if key in expected_transcript and transcript.get(key) != expected_transcript[key]:
+                    mismatches.append(f"transcript.{key}: expected {expected_transcript[key]!r}, got {transcript.get(key)!r}")
+            if "entries" in expected_transcript and transcript.get("entries") != expected_transcript["entries"]:
+                mismatches.append(
+                    f"transcript.entries: expected {expected_transcript['entries']!r}, got {transcript.get('entries')!r}"
+                )
+
+        for needle in expected.get("stdout_contains", []):
+            if needle not in proc.stdout:
+                mismatches.append(f"stdout_contains: missing {needle!r}")
+        for needle in expected.get("stderr_contains", []):
+            if needle not in proc.stderr:
+                mismatches.append(f"stderr_contains: missing {needle!r}")
+        for needle in expected.get("stdout_not_contains", []):
+            if needle in proc.stdout:
+                mismatches.append(f"stdout_not_contains: found unexpected {needle!r}")
+
+        assert_fs = _expand_tokens(case.get("assert_fs", {}), tokens)
+        for item in assert_fs.get("path_exists", []):
+            if not Path(item).exists() and not Path(item).is_symlink():
+                mismatches.append(f"path_exists: missing {item}")
+        for item in assert_fs.get("path_absent", []):
+            if Path(item).exists() or Path(item).is_symlink():
+                mismatches.append(f"path_absent: expected absent {item}")
+        for item in assert_fs.get("symlink_targets", []):
+            p = Path(item["path"])
+            expected_target = item["target"]
+            if not p.is_symlink():
+                mismatches.append(f"symlink_targets: not a symlink {p}")
+                continue
+            actual_target = str((p.parent / os.readlink(p)).resolve())
+            expected_norm = str(Path(expected_target).resolve())
+            if actual_target != expected_norm:
+                mismatches.append(f"symlink_targets: expected {p} -> {expected_target}, got {actual_target}")
+
+        if case.get("assert_real_home_unchanged", False) and not real_home_unchanged:
+            mismatches.append("real_home_probes_changed")
+
+        details = {
+            "command": cmd,
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "transcript": transcript,
+            "expected": expected,
+            "real_home_probes_before": probe_before,
+            "real_home_probes_after": probe_after,
+            "real_home_unchanged": real_home_unchanged,
+            "mismatches": mismatches,
+        }
+        return not mismatches, details
+
+
 CASE_DISPATCH = {
     "schema_parse": _run_case_schema_parse,
     "ref_resolution": _run_case_ref_resolution,
@@ -335,6 +518,7 @@ CASE_DISPATCH = {
     "allowed_doc_migration_references": _run_case_allowed_doc_migration,
     "contract_case": _run_case_contract_case,
     "wrapper_exec_case": _run_case_wrapper_exec,
+    "temp_home_shell_script_case": _run_case_temp_home_shell_script,
 }
 
 

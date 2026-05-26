@@ -1,0 +1,43 @@
+{
+  "case_id": "install-temp-home-restore-path-escape",
+  "description": "Restore path escape is blocked when backup dir is outside codex-home/longtask-backups.",
+  "case_type": "temp_home_shell_script_case",
+  "script_path": "scripts/uninstall-codex.sh",
+  "args": [
+    "--source-dir",
+    "{SOURCE_DIR}",
+    "--codex-home",
+    "{TEMP_CODEX_HOME}",
+    "--restore-backup",
+    "{TEMP_ROOT}/outside/r1"
+  ],
+  "real_home_probes": [
+    "{REAL_CODEX_HOME}/skills/codex-longtask",
+    "{REAL_CODEX_HOME}/skills/codex-longtask-code",
+    "{REAL_CODEX_HOME}/longtask-backups"
+  ],
+  "assert_real_home_unchanged": true,
+  "expected": {
+    "exit_code": 1,
+    "transcript": {
+      "codex_home": "{TEMP_CODEX_HOME}",
+      "source_dir": "{SOURCE_DIR}",
+      "action": "restore",
+      "entries": [
+        {
+          "name": "codex-longtask",
+          "status": "ERROR_PATH_ESCAPE",
+          "target": "null",
+          "backup": "{TEMP_ROOT}/outside/r1"
+        },
+        {
+          "name": "codex-longtask-code",
+          "status": "ERROR_PATH_ESCAPE",
+          "target": "null",
+          "backup": "{TEMP_ROOT}/outside/r1"
+        }
+      ],
+      "next_verify_command": "bash scripts/run-fixtures.sh --group install-temp-home-safety"
+    }
+  }
+}

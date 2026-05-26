@@ -1,0 +1,48 @@
+{
+  "case_id": "install-temp-home-dry-run",
+  "description": "Dry-run install emits SKIPPED_DRY_RUN and performs no filesystem mutation in temp home.",
+  "case_type": "temp_home_shell_script_case",
+  "script_path": "scripts/install-codex.sh",
+  "args": [
+    "--source-dir",
+    "{SOURCE_DIR}",
+    "--codex-home",
+    "{TEMP_CODEX_HOME}",
+    "--dry-run"
+  ],
+  "real_home_probes": [
+    "{REAL_CODEX_HOME}/skills/codex-longtask",
+    "{REAL_CODEX_HOME}/skills/codex-longtask-code",
+    "{REAL_CODEX_HOME}/longtask-backups"
+  ],
+  "assert_real_home_unchanged": true,
+  "expected": {
+    "exit_code": 0,
+    "transcript": {
+      "codex_home": "{TEMP_CODEX_HOME}",
+      "source_dir": "{SOURCE_DIR}",
+      "action": "dry-run",
+      "entries": [
+        {
+          "name": "codex-longtask",
+          "status": "SKIPPED_DRY_RUN",
+          "target": "{SOURCE_DIR}/skills/codex-longtask",
+          "backup": "null"
+        },
+        {
+          "name": "codex-longtask-code",
+          "status": "SKIPPED_DRY_RUN",
+          "target": "{SOURCE_DIR}/skills/codex-longtask-code",
+          "backup": "null"
+        }
+      ],
+      "next_verify_command": "bash scripts/run-fixtures.sh --group install-temp-home-safety"
+    }
+  },
+  "assert_fs": {
+    "path_absent": [
+      "{TEMP_CODEX_HOME}/skills/codex-longtask",
+      "{TEMP_CODEX_HOME}/skills/codex-longtask-code"
+    ]
+  }
+}

@@ -39,9 +39,30 @@ audit.
 ## Model Budget
 
 Do not let worker/verifier subagents blindly inherit an expensive parent setting.
+The conductor session itself typically runs at `gpt-5.5` + `xhigh`; **execution
+sub-agents must drop down** unless the phase frontmatter explicitly bumps.
+
+**For worker / retry-worker / verifier, read the reasoning effort from the
+plan frontmatter, not from the conductor's runtime setting.** Resolution:
+
+```
+phase.reasoning_effort  >  spec.default_reasoning_effort  >  hard fallback 'medium'
+```
+
+When dispatching the codex subagent, pass `-c model_reasoning_effort="<resolved>"`
+explicitly to the wrapper or set `CODEX_LONGTASK_REASONING` in the call's env.
+
 Use explicit reasoning choices:
 
-- worker: `medium`
+- worker: resolved from frontmatter (default `medium`); pass via
+  `model_reasoning_effort` config when spawning
+- retry worker: same as worker, **auto-escalated one tier** (medium → high →
+  xhigh) per retry round, unless the phase pinned `reasoning_effort` (a pin
+  disables auto-escalation; log `model_degraded: false, reason:
+  "pinned_by_phase"`)
+- verifier: same resolved effort as the worker for the same phase; escalate
+  one tier on next round if verifier JSON came back inconsistent or
+  reward-hacking-suspicious
 - input classifier: `gpt-5.5` with `xhigh` reasoning
 - spec specialist discussion agents: `gpt-5.5` with `high` reasoning, escalating
   to `xhigh` for high-risk domain/product/data/security/UI decisions
@@ -50,8 +71,6 @@ Use explicit reasoning choices:
 - consensus editor: `gpt-5.5` with `xhigh` reasoning
 - implementation plan writer: `gpt-5.5` with `xhigh` reasoning
 - plan integrity reviewer: `gpt-5.5` with `xhigh` reasoning
-- first verifier: `medium`
-- retry worker after repeated FAIL: `high`
 - decision reviewer: `gpt-5.5` with `xhigh` reasoning, including simple local
   auto-decisions
 - final E2E2/report subagent: `gpt-5.5` with `xhigh` reasoning
@@ -59,7 +78,7 @@ Use explicit reasoning choices:
 
 Prefer two independent `medium` verifier passes over one `xhigh` verifier for
 risky phases. Do not spend `gpt-5.5` + `xhigh` on ordinary worker/verifier
-passes unless a later risk assessment requires it.
+passes unless the phase frontmatter explicitly pins `reasoning_effort: xhigh`.
 
 If a preferred model or reasoning override is unavailable, use the strongest
 available model/reasoning, record `model_degraded: true` plus requested/actual

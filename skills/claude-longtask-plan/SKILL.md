@@ -41,7 +41,7 @@ Skip in favor of full `/longtask` when:
 | Step | Owner | Scope (subset of /longtask) |
 |---|---|---|
 | **(a) Architecture** | Claude opus (main session + Agent tool) | Spec classification, plan writing, plan-integrity review. |
-| **(b) Discussion** | Cross-rounds roundtable (v0.4) | Spec-roundtable (Step 2, may be skipped when `pre_vetted`) + plan-roundtable (Step 4b, always runs). Each round = cross-pair (codex × lenses → codex mid-summary → claude × lenses → claude end-summary). Consensus editors: single Claude opus. Terminal gate: cross-rounds-final-review (opus 4.7 max). |
+| **(b) Discussion** | Cross-rounds roundtable (v0.4) | Spec-roundtable (Step 2, may be skipped when `pre_vetted`) + plan-roundtable (Step 4b, always runs). Each round = cross-pair (codex × lenses → codex mid-summary → claude × lenses → claude end-summary). Consensus editors: single Claude opus. Terminal gate: cross-rounds-final-review (opus 4.7 xhigh). |
 | (c) Work | — | Not in scope; deferred to `/longtaskCode`. |
 | (d) Final verification | — | Not in scope; deferred to `/longtaskCode`. |
 
@@ -55,7 +55,7 @@ Step 1  Classifier         Claude Agent → JSON {input_shape, cross_rounds,
 Step 2  Spec-roundtable    cross_rounds × cross-pair rounds (codex lenses → codex
                            mid-summary → claude lenses → claude end-summary) +
                            spec-consensus-editor (single Claude opus) +
-                           cross-rounds-final-review (opus 4.7 max) → enhanced-spec
+                           cross-rounds-final-review (opus 4.7 xhigh) → enhanced-spec
                            **Skipped when classifier.pre_vetted.is_pre_vetted == true**
 Step 3  Codex spec sanity  (UNCONDITIONAL) codex exec --output-schema single pass
                            → {verdict: CLEAN | NEEDS_REVISION}
@@ -63,7 +63,7 @@ Step 4  Plan-writer        Claude Agent invokes superpowers:writing-plans → pl
                            (multi-agent dispatch when plan has ≥3 phases)
 Step 4b Plan-roundtable    cross_rounds × cross-pair rounds on the plan +
                            plan-consensus-editor (single Claude opus, in-place rewrite) +
-                           cross-rounds-final-review (opus 4.7 max)
+                           cross-rounds-final-review (opus 4.7 xhigh)
                            **ALWAYS RUN, cross_rounds ≥ 1**
 Step 5  Plan-integrity     HYBRID gate (Claude primary + Codex secondary) → PASS or
                            BLOCKED_SPEC_REWRITE. Includes textual fidelity check
@@ -85,7 +85,7 @@ manifest" below) and stops. `/longtaskCode` consumes that manifest to run Steps
 | Step 2 Phase 3 lens (claude) | `spec-roundtable.md` (phase=claude) | Claude Agent per lens |
 | Step 2 Phase 4 round-state | `spec-round-state.md` | Claude Agent (end-round summary) |
 | Step 2 Phase 5 consensus | `spec-consensus-editor.md` | Single Claude opus (v0.4) |
-| Step 2 Phase 6 final review | `cross-rounds-final-review.md` | Claude opus 4.7 max (NEW v0.4) |
+| Step 2 Phase 6 final review | `cross-rounds-final-review.md` | Claude opus 4.7 xhigh (NEW v0.4) |
 | Step 3 | `spec-codex-sanity.md` | `codex exec` |
 | Step 4 | `plan-writer.md` | Claude Agent (multi-agent ≥3 phases) |
 | Step 4b Phase 1 lens (codex) | `plan-roundtable.md` (phase=codex) | `codex exec` per lens |
@@ -93,7 +93,7 @@ manifest" below) and stops. `/longtaskCode` consumes that manifest to run Steps
 | Step 4b Phase 3 lens (claude) | `plan-roundtable.md` (phase=claude) | Claude Agent per lens |
 | Step 4b Phase 4 round-state | `plan-round-state.md` | Claude Agent (end-round summary) |
 | Step 4b Phase 5 consensus | `plan-consensus-editor.md` | Single Claude opus (v0.4) |
-| Step 4b Phase 6 final review | `cross-rounds-final-review.md` | Claude opus 4.7 max (NEW v0.4) |
+| Step 4b Phase 6 final review | `cross-rounds-final-review.md` | Claude opus 4.7 xhigh (NEW v0.4) |
 | Step 5 | `plan-integrity-review.md` | Hybrid (Claude primary + Codex secondary) |
 | Cross-cutting | `codex-clarification.md` | One-shot tie-breaker before any uncertainty-driven ASK_HUMAN |
 | Cross-cutting | `known-traps-appendix.md` | Worker/verifier context (used in Step 6+, not here) |

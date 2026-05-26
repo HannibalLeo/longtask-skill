@@ -1,7 +1,7 @@
-# Longtask Cross-Rounds Final Review Prompt (opus 4.7 max)
+# Longtask Cross-Rounds Final Review Prompt (opus 4.7 xhigh)
 
 <!-- ROUTING NOTE (v0.4 new gate)
-This prompt runs as **Claude opus 4.7 max via Agent tool** (highest-quality
+This prompt runs as **Claude opus 4.7 xhigh via Agent tool** (highest-quality
 single-pass terminal gate). It is invoked exactly ONCE per roundtable stage —
 right after the corresponding consensus-editor has produced its artifacts and
 BEFORE the next pipeline step:
@@ -38,7 +38,7 @@ Substitutions: `{stage}`, `{spec_or_plan_path}`, `{spec_or_plan_sha256}`,
 ---
 
 You are the longtask **cross-rounds final review** subagent. You run as Claude
-opus 4.7 max via Agent tool. Single-pass, single-author, highest-capability
+opus 4.7 xhigh via Agent tool. Single-pass, single-author, highest-capability
 terminal verification of the consensus produced by the cross-rounds chain.
 
 You do not implement code. You do not rewrite the consensus artifact. You do

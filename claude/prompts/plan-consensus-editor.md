@@ -13,7 +13,7 @@ final consensus has already digested cross-model signal via the round-state
 chain. A second Codex pass at consensus time was duplicating that work.
 
 The terminal verdict gate (PASS / NEEDS_REVISION) has moved to a separate
-`cross-rounds-final-review` opus 4.7 max subagent (next step in the
+`cross-rounds-final-review` opus 4.7 xhigh subagent (next step in the
 orchestrator). This editor's job is to produce the rewritten plan; the next
 gate's job is to flag residual risks before Step 5 plan-integrity-review.
 
@@ -194,7 +194,7 @@ Return one JSON object:
 ```
 
 - Use `READY_FOR_CROSS_ROUNDS_FINAL_REVIEW` on success — orchestrator dispatches
-  the opus 4.7 max final-review gate next, then Step 5 plan-integrity-review.
+  the opus 4.7 xhigh final-review gate next, then Step 5 plan-integrity-review.
 - Use `BLOCKED_SPEC_REWRITE` when round-state outputs contain
   `net_weakening_no_compensation` items, would drop a REQ-* without provision,
   or modify frontmatter contract fields against intent. `blocked_reason` must

@@ -153,11 +153,21 @@ fills in placeholder text to "make it complete".
 
    Each phase MAY also include:
    - `model_tier` — one of `haiku` | `sonnet` | `opus`. Overrides the
-     top-level `default_model_tier` for this phase's worker dispatch. Use
-     `opus` for phases with cross-module reasoning, novel design choices, or
-     fragile mechanical refactors; `sonnet` for the bulk of well-scoped
-     implementation work; `haiku` for trivially mechanical phases (rare).
-     Omit to inherit `default_model_tier`.
+     top-level `default_model_tier` for this phase's worker dispatch in the
+     **claude-longtask** flow. Use `opus` for phases with cross-module
+     reasoning, novel design choices, or fragile mechanical refactors;
+     `sonnet` for the bulk of well-scoped implementation work; `haiku` for
+     trivially mechanical phases (rare). Omit to inherit `default_model_tier`.
+   - `reasoning_effort` — one of `medium` | `high` | `xhigh`. Overrides the
+     top-level `default_reasoning_effort` for this phase's
+     worker / retry-worker / verifier dispatch in the **codex-longtask**
+     flow. Use `high` for phases with cross-module impact, fragile algorithm
+     work, or security-sensitive code; `medium` is the right baseline for
+     well-scoped implementation; `xhigh` only for the genuinely hard phases
+     (novel design, irreversible migration). Retry rounds auto-escalate one
+     tier (medium → high → xhigh) regardless of this knob; set explicitly
+     to override the auto-escalation. Omit to inherit
+     `default_reasoning_effort`.
 6. Phase body must remain worker-executable by a fresh Claude Agent worker.
    Reject and block plan output when any phase body requires:
    - `/skill` dispatch
@@ -177,11 +187,22 @@ fills in placeholder text to "make it complete".
    - `final_e2e2_cmd`
    - `final_report_path`
    - `default_model_tier` — one of `haiku` | `sonnet` | `opus`. Default
-     model for every phase worker dispatch. **Required**; absent →
-     `BLOCKED_SPEC_REWRITE`. Set to `sonnet` unless the spec as a whole
-     has a strong reason to default higher (e.g. plans dominated by novel
-     architecture work) or lower (e.g. plans dominated by trivially
-     mechanical phases).
+     Claude model for every phase worker dispatch in the **claude-longtask**
+     flow. **Required**; absent → `BLOCKED_SPEC_REWRITE`. Set to `sonnet`
+     unless the spec as a whole has a strong reason to default higher
+     (e.g. plans dominated by novel architecture work) or lower (e.g. plans
+     dominated by trivially mechanical phases).
+   - `default_reasoning_effort` — one of `medium` | `high` | `xhigh`.
+     Default codex `model_reasoning_effort` for the
+     worker / retry-worker / verifier sub-agents in the **codex-longtask**
+     flow. **Required**; absent → `BLOCKED_SPEC_REWRITE`. Default to
+     `medium` — the codex CLI session (main agent / conductor) typically
+     runs at `xhigh`, but cost-dominant execution sub-agents should run
+     cheaper unless the phase explicitly bumps via per-phase
+     `reasoning_effort`. Judgment-heavy roles (classifier, lenses,
+     mid-summary, consensus editor, plan writer, plan-integrity reviewer,
+     decision reviewer, final-alignment reviewer, cross-rounds final
+     review) ignore this field and stay at `xhigh` by policy.
 8. The final E2E2 command must produce or support screenshots. If no credible
    E2E2 screenshot path exists, stop with `BLOCKED_SPEC_REWRITE` and explain
    the missing prerequisite instead of weakening the gate.
@@ -215,7 +236,8 @@ enhanced_spec_sha256: "..."
 final_verify_cmd: "..."
 final_e2e2_cmd: "..."
 final_report_path: ".longtask/reports/<spec>/final-report.md"
-default_model_tier: sonnet   # haiku | sonnet | opus — see No-Loss Rules #7
+default_model_tier: sonnet           # haiku | sonnet | opus — claude-longtask worker
+default_reasoning_effort: medium     # medium | high | xhigh — codex-longtask worker / retry-worker / verifier
 ---
 
 # Implementation Plan / Execution Spec
@@ -259,7 +281,8 @@ do_not_touch: [.env*, data/**]
 verify_cmd: "command"
 verify_passes_when: "exit 0 and named checks pass"
 max_retry_rounds: 3
-# model_tier: opus     # optional — overrides default_model_tier for this phase
+# model_tier: opus         # optional — overrides default_model_tier (claude flow)
+# reasoning_effort: high   # optional — overrides default_reasoning_effort (codex flow)
 dod:
   - "Concrete criterion"
 ```

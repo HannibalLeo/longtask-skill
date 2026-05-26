@@ -21,7 +21,7 @@ orchestrator dispatch logic, scope gate adjudication.
 cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses
 → claude opus end-summary). Lenses are NOT model-bound — every lens runs both
 codex and claude per round. Consensus editor (single Claude opus) writes the
-artifact once; cross-rounds-final-review (opus 4.7 max) is the terminal gate.
+artifact once; cross-rounds-final-review (opus 4.7 xhigh) is the terminal gate.
 Then **codex spec sanity** (Step 3) — single Codex pass over the (possibly
 enhanced) spec, unconditional, anti-blindspot audit for omissions /
 hallucinations / contradictions before plan-writer.
@@ -239,7 +239,7 @@ After the final spec-stage round (Phase 4 returns `READY_FOR_SPEC_CONSENSUS`):
    `state.spec_consensus_editor_path` (the JSON return).
 3. `status == BLOCKED_SPEC_REWRITE` → emit BLOCKED, stop.
 
-**Phase 6 — Cross-rounds final review (opus 4.7 max, v0.4 new terminal gate).**
+**Phase 6 — Cross-rounds final review (opus 4.7 xhigh, v0.4 new terminal gate).**
 
 1. Dispatch Claude Agent with `prompts/cross-rounds-final-review.md` substituted
    with `stage=spec`, the consensus artifact, the consensus-editor JSON return,
@@ -416,7 +416,7 @@ After the final plan-stage round (Phase 4 returns `READY_FOR_PLAN_CONSENSUS`):
 4. Persist `state.plan_consensus_editor_path` (the JSON return).
    `status == BLOCKED_SPEC_REWRITE` → stop.
 
-**Phase 6 — Cross-rounds final review (opus 4.7 max, v0.4 new terminal gate).**
+**Phase 6 — Cross-rounds final review (opus 4.7 xhigh, v0.4 new terminal gate).**
 
 1. Dispatch Claude Agent with `prompts/cross-rounds-final-review.md` substituted
    with `stage=plan`, the rewritten plan body, the plan-consensus-editor JSON
@@ -813,7 +813,7 @@ suggested next step (e.g., "extend file_scope to include X", "split phase Pn int
 | Codex mid-round summary (Step 2 / 4b Phase 2) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
 | Claude end-round summary / round-state editor | Claude opus via Agent tool | — | — |
 | Consensus editor (single author, v0.4) | Claude opus via Agent tool | — | — |
-| Cross-rounds final review (Step 2 / 4b Phase 6) | Claude opus 4.7 max via Agent tool | — | — |
+| Cross-rounds final review (Step 2 / 4b Phase 6) | Claude opus 4.7 xhigh via Agent tool | — | — |
 | Plan writer | Claude opus via Agent tool | — | — |
 | Plan integrity review (primary) | Claude opus via Agent tool | — | — |
 | Plan integrity review (secondary) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |

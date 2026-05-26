@@ -16,8 +16,9 @@ The planning-half companion is [/longtask:longtaskPlan](../longtask:longtaskPlan
 `longtaskCode` independently against a hand-written plan that already satisfies
 the v2 frontmatter contract (`source_spec_path`, `source_spec_sha256`,
 `final_verify_cmd`, `final_e2e2_cmd`, `final_report_path`,
-`default_model_tier`, plus per-phase schema — optional `model_tier` overrides
-the default per phase).
+`default_model_tier`, `default_reasoning_effort`, plus per-phase schema —
+optional per-phase `model_tier` (claude flow) and `reasoning_effort`
+(codex flow) override the defaults).
 
 ## When to use
 
@@ -129,10 +130,12 @@ The manifest contains `plan_path`, `plan_post_cross_rounds_sha256`,
 Orchestrator:
 1. Reads the plan file. Validates v2 frontmatter (Step 4's check applies here):
    `source_spec_path`, `source_spec_sha256`, `final_verify_cmd`,
-   `final_e2e2_cmd`, `final_report_path`, `default_model_tier` MUST be
-   present. Missing → `BLOCKED_SPEC`. Unrecognised `default_model_tier` or
-   per-phase `model_tier` value (not in `haiku | sonnet | opus`) →
-   `BLOCKED_SPEC`.
+   `final_e2e2_cmd`, `final_report_path`, `default_model_tier`,
+   `default_reasoning_effort` MUST be present. Missing → `BLOCKED_SPEC`.
+   Unrecognised `default_model_tier` / per-phase `model_tier` value (not in
+   `haiku | sonnet | opus`) → `BLOCKED_SPEC`. Unrecognised
+   `default_reasoning_effort` / per-phase `reasoning_effort` value (not in
+   `medium | high | xhigh`) → `BLOCKED_SPEC`.
 2. Loads the source spec at `source_spec_path` and asserts its current SHA-256
    equals `source_spec_sha256`. Drift → `BLOCKED_SPEC`.
 3. Validates per-phase fields (`goals`, `file_scope`, `do_not_touch`,

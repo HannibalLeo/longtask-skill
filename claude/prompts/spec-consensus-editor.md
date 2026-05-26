@@ -13,7 +13,7 @@ final consensus has already digested cross-model signal via the round-state
 chain. A second Codex pass at consensus time was duplicating that work.
 
 The terminal verdict gate has moved to a separate `cross-rounds-final-review`
-opus 4.7 max subagent (next step in the orchestrator). This editor's job is
+opus 4.7 xhigh subagent (next step in the orchestrator). This editor's job is
 to produce the artifacts; the next gate's job is to PASS / NEEDS_REVISION
 them.
 -->
@@ -157,7 +157,7 @@ Return one JSON object:
 ```
 
 - Use `READY_FOR_CROSS_ROUNDS_FINAL_REVIEW` on success — orchestrator dispatches
-  the opus 4.7 max final-review gate next.
+  the opus 4.7 xhigh final-review gate next.
 - Use `BLOCKED_SPEC_REWRITE` only when round-state outputs cannot be
   synthesized without dropping a REQ-* or accepting a net-weakening without
   compensation. `blocked_reason` enumerates the specific items.

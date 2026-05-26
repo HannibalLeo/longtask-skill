@@ -1,6 +1,6 @@
 ---
 name: longtask
-description: Multi-phase spec execution — Claude opus orchestrator + per-phase Claude worker (sonnet/opus, tier-selectable per phase) + Codex GPT-5.5 verifier via `codex exec --output-schema`, with cross-rounds roundtable (codex lenses → codex mid-summary → claude lenses → claude end-summary, repeated 1-3 rounds per stage) and opus 4.7 max terminal review. Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
+description: Multi-phase spec execution — Claude opus orchestrator + per-phase Claude worker (sonnet/opus, tier-selectable per phase) + Codex GPT-5.5 verifier via `codex exec --output-schema`, with cross-rounds roundtable (codex lenses → codex mid-summary → claude lenses → claude end-summary, repeated 1-3 rounds per stage) and opus 4.7 xhigh terminal review. Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
 ---
 
 # /longtask — v0.4 cross-rounds (Claude + Codex)
@@ -20,7 +20,7 @@ Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
 | Step | Owner | Scope |
 |---|---|---|
 | **(a) Claude does architecture** | Claude opus (main session + Agent tool) | Spec classification, plan writing, plan-integrity review. All "understand the spec, split it, decide who verifies" judgments. |
-| **(b) Claude + Codex discuss** | Mixed | Cross-rounds roundtable (v0.4): every round is a cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses → claude opus end-summary). Lenses are NOT model-bound — every lens runs both codex and claude per round. Consensus editor is single Claude opus; cross-rounds-final-review (opus 4.7 max) is the terminal gate. |
+| **(b) Claude + Codex discuss** | Mixed | Cross-rounds roundtable (v0.4): every round is a cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses → claude opus end-summary). Lenses are NOT model-bound — every lens runs both codex and claude per round. Consensus editor is single Claude opus; cross-rounds-final-review (opus 4.7 xhigh) is the terminal gate. |
 | **(c) Claude worker writes; Codex verifier judges** | Claude (sonnet default, opus / haiku per `model_tier`) via Agent tool + Codex GPT-5.5 via `codex exec --output-schema` | Phase worker writes code in a fresh Claude Agent; phase verifier is a separate Codex GPT-5.5 process that re-reads the working tree, runs `verify_cmd`, and emits schema-driven JSON. The cross-model split is load-bearing: the judge has a different distribution of blindspots than the worker, and `--output-schema` enforces parseable JSON regardless of how the worker phrased its own progress. |
 | **(d) Claude finalizes** | Claude opus (main session) | Reads every verifier JSON to decide PASS/retry, runs hybrid decision/plan-integrity/final-alignment gates, runs final E2E2 (browser/screenshots via Claude harness), syncs docs, ships. |
 
@@ -45,14 +45,14 @@ Step 1  Classifier             Claude Agent → JSON {input_shape, cross_rounds,
 Step 2  Spec-roundtable        (skippable iff pre_vetted) cross_rounds × cross-pair rounds
                                (codex × lenses → codex mid-summary → claude × lenses → claude end-summary)
                                → spec-consensus-editor (single Claude opus, writes enhanced-spec)
-                               → cross-rounds-final-review (opus 4.7 max, terminal verdict)
+                               → cross-rounds-final-review (opus 4.7 xhigh, terminal verdict)
 Step 3  Codex spec sanity      (UNCONDITIONAL) Codex GPT-5.5 single pass: omissions / hallucinations / contradictions
                                / reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}
 Step 4  Plan-writer            Claude Agent invokes superpowers:writing-plans → implementation_plan.md
                                (multi-agent dispatch when plan has ≥3 phases)
 Step 4b Plan-roundtable        (ALWAYS RUN, cross_rounds ≥ 1) Same cross-pair shape as Step 2
                                → plan-consensus-editor (single Claude opus, rewrites plan.md in place)
-                               → cross-rounds-final-review (opus 4.7 max, terminal verdict)
+                               → cross-rounds-final-review (opus 4.7 xhigh, terminal verdict)
 Step 5  Plan-integrity         HYBRID gate (Claude primary + Codex secondary) → PASS or BLOCKED_SPEC_REWRITE
 Step 6  Per-phase loop         For each Pn: Claude sub-agent dispatches Claude worker (Agent tool, model from model_tier) → scope gate → Codex verifier (codex exec --output-schema)
                                → main-line JSON review → commit on PASS
@@ -123,7 +123,8 @@ final_report_path: .longtask/reports/{spec_basename}/final-report.md
 # Required. Where final-e2e2-report writes the artifact.
 
 default_model_tier: sonnet   # one of: haiku | sonnet | opus
-# Required (v0.4+). Default Claude model the Step 6 per-phase worker runs on.
+# Required (v0.4+). Default Claude model the Step 6 per-phase worker runs on
+# when this spec is executed by claude-longtask.
 # Tier → model:
 #   haiku  → claude-haiku-4-5   (mechanical / trivial phases only)
 #   sonnet → claude-sonnet-4-6  (DEFAULT — covers most implementation work)
@@ -131,6 +132,26 @@ default_model_tier: sonnet   # one of: haiku | sonnet | opus
 # Resolution order at dispatch time:
 #   phase.model_tier  >  spec.default_model_tier  >  hard fallback 'sonnet'
 # Missing → BLOCKED_SPEC. Unrecognised tier → BLOCKED_SPEC.
+# Ignored when this spec is executed by codex-longtask (codex uses
+# default_reasoning_effort instead).
+
+default_reasoning_effort: medium  # one of: medium | high | xhigh
+# Required (v0.4+). Default `model_reasoning_effort` the Step 6
+# worker / retry-worker / verifier sub-agents run on when this spec is
+# executed by codex-longtask. Designed for the case where the main codex
+# session (conductor) is running at `xhigh`, but the cost-dominant execution
+# sub-agents should drop to `medium` unless a specific phase needs more
+# headroom.
+# Resolution order at dispatch time:
+#   phase.reasoning_effort  >  spec.default_reasoning_effort  >  hard fallback 'medium'
+# Retry rounds auto-escalate one tier (medium → high → xhigh) unless the
+# phase explicitly pins reasoning_effort.
+# Scope: applies ONLY to worker / retry-worker / verifier. Judgment-heavy
+# roles (classifier, roundtable lenses, mid-summary, consensus editor, plan
+# writer, plan-integrity, decision-review, final-alignment, cross-rounds
+# final review) stay at `xhigh` regardless of this field.
+# Missing → BLOCKED_SPEC. Unrecognised effort → BLOCKED_SPEC.
+# Ignored when this spec is executed by claude-longtask.
 
 # === OPTIONAL v2 fields ===
 
@@ -142,7 +163,7 @@ cross_rounds: 2   # one of: 1, 2, 3  (omit to let classifier decide)
 #   Phase 3: claude × all lenses (parallel, sees Phase 1 + Phase 2 output)
 #   Phase 4: claude opus end-round summary (writes round-state)
 # After the final round, a single Claude opus consensus-editor rewrites the
-# enhanced spec / plan in place, then a opus 4.7 max cross-rounds-final-review
+# enhanced spec / plan in place, then a opus 4.7 xhigh cross-rounds-final-review
 # does the terminal PASS / NEEDS_REVISION verdict.
 #
 # REMOVED v0.4: `roundtable_mode` (hybrid/dual). Cross-model heterogeneity is
@@ -208,8 +229,9 @@ max_retry_rounds: 3
 cost_budget_usd: 5
 idle_timeout_minutes: 10
 
-# Optional per-phase override; falls back to spec.default_model_tier.
-# model_tier: opus   # one of: haiku | sonnet | opus
+# Optional per-phase overrides.
+# model_tier: opus            # haiku | sonnet | opus — claude-longtask worker
+# reasoning_effort: high      # medium | high | xhigh — codex-longtask worker/retry-worker/verifier
 
 # === v2 additions ===
 source_requirements: [REQ-001, REQ-002]
@@ -237,7 +259,7 @@ Missing required field → orchestrator BLOCKED_SPEC, points at line/phase, no C
 Claude main session (opus)                = Orchestrator
   ├─ reads spec, state, JSON outputs
   ├─ dispatches Claude Agents (classifier, roundtable claude-phase lenses,
-  │   claude end-round summary, consensus-editor, cross-rounds-final-review (opus 4.7 max),
+  │   claude end-round summary, consensus-editor, cross-rounds-final-review (opus 4.7 xhigh),
   │   plan-writer, plan-integrity primary, final-e2e2, final-alignment primary,
   │   docs-sync, ship)
   └─ dispatches `codex exec` children for:
@@ -292,7 +314,7 @@ codex exec children (one-shot, GPT-5.5)
 | Spec-roundtable lens (claude phase, any lens) | Claude opus | Agent tool | (b) |
 | Spec-roundtable claude end-round summary (round-state) | Claude opus | Agent tool | (b) |
 | **Spec consensus editor** (single author, v0.4) | Claude opus | Agent tool | (b) |
-| **Spec cross-rounds final review** | **Claude opus 4.7 max** | Agent tool | **(b)+(d)** |
+| **Spec cross-rounds final review** | **Claude opus 4.7 xhigh** | Agent tool | **(b)+(d)** |
 | **Codex spec sanity** | **Codex GPT-5.5 xhigh** (unconditional second-opinion audit) | `codex exec --output-schema` | **(b)** |
 | **Plan-writer** | **Claude opus** (invokes `superpowers:writing-plans`; multi-agent dispatch when plan ≥3 phases) | Agent tool | **(a)** |
 | Plan-roundtable lens (codex phase, any lens) | Codex GPT-5.5 xhigh | `codex exec` | (b) |
@@ -300,7 +322,7 @@ codex exec children (one-shot, GPT-5.5)
 | Plan-roundtable lens (claude phase, any lens) | Claude opus | Agent tool | (b) |
 | Plan-roundtable claude end-round summary (round-state) | Claude opus | Agent tool | (b) |
 | **Plan consensus editor** (single author, v0.4) | Claude opus | Agent tool | (b) |
-| **Plan cross-rounds final review** | **Claude opus 4.7 max** | Agent tool | **(b)+(d)** |
+| **Plan cross-rounds final review** | **Claude opus 4.7 xhigh** | Agent tool | **(b)+(d)** |
 | **Plan-integrity review** | **Claude opus primary + Codex GPT-5.5 xhigh secondary** | hybrid (decision #6) | **(a)+(d)** |
 | Phase worker | **Claude** — model selected per phase: `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | `Agent` tool (one fresh Agent per round) | (c) |
 | **Phase verifier** | Codex GPT-5.5 (schema-driven JSON) → Claude main-line reads JSON | `codex exec --output-schema` → Claude review | **(c)→(d)** |
@@ -555,7 +577,7 @@ Minimal example (one phase mid-run):
 │   ├── plan-codex-mid-summary.md             # Step 4b Phase 2 codex xhigh mid-round summary (NEW v0.4)
 │   ├── plan-round-state.md                   # Step 4b Phase 4 claude opus end-round summary (round-state)
 │   ├── plan-consensus-editor.md              # single Claude opus consensus that revises plan.md in place
-│   ├── cross-rounds-final-review.md          # Step 2 / 4b Phase 6 opus 4.7 max terminal verdict (NEW v0.4)
+│   ├── cross-rounds-final-review.md          # Step 2 / 4b Phase 6 opus 4.7 xhigh terminal verdict (NEW v0.4)
 │   # === Step 5 / 6 / 8 hybrid gates ===
 │   ├── plan-integrity-review.md              # hybrid: Claude primary + Codex secondary
 │   ├── decision-review.md                    # hybrid: Claude primary + Codex secondary

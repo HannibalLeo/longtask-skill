@@ -121,6 +121,28 @@ Native subagents inherit the parent model/reasoning by default. Do not rely on
 that default for longtask. The conductor should choose cheaper reasoning first
 and escalate only when evidence says the task needs it.
 
+**The Step 6 execution sub-agents (worker / retry-worker / verifier) read
+their reasoning effort from the spec's frontmatter contract, not from the
+conductor's runtime model state.** Two knobs:
+
+- `default_reasoning_effort` (top-level frontmatter, required): default for
+  the spec. Conventional value `medium` — meant for the case where the
+  conductor session is running at `xhigh` but the cost-dominant execution
+  sub-agents should run cheaper.
+- `reasoning_effort` (per phase block, optional): overrides the default for
+  that one phase. Use `high` for cross-module / fragile / security-sensitive
+  phases; `xhigh` only for the genuinely hard ones.
+
+Resolution at dispatch time:
+`phase.reasoning_effort > spec.default_reasoning_effort > hard fallback 'medium'`.
+
+**Retry escalation.** Retry rounds auto-bump one tier (medium → high →
+xhigh) regardless of the resolved value, unless the phase pinned
+`reasoning_effort` explicitly (a pinned value disables auto-escalation —
+the conductor logs `model_degraded: false, reason: "pinned_by_phase"`).
+
+Judgment-heavy roles ignore both knobs and stay at `xhigh` by policy.
+
 Default policy:
 
 | Role | First choice | Escalate when |
@@ -131,9 +153,9 @@ Default policy:
 | consensus editor | `gpt-5.5`, `xhigh` reasoning | always after five discussion rounds |
 | implementation plan writer | `gpt-5.5`, `xhigh` reasoning | always when source spec must become a plan |
 | plan integrity reviewer | `gpt-5.5`, `xhigh` reasoning | always before phase execution |
-| worker | same model family as parent, `medium` reasoning | verifier FAIL twice for non-trivial root cause |
-| retry worker | `medium`, then `high` after repeated FAIL | architecture ambiguity, cross-module refactor, security-sensitive code |
-| verifier | `medium` reasoning | verifier JSON inconsistent, tests ambiguous, reward-hacking suspicion |
+| **worker** | `gpt-5.5`, reasoning resolved from `phase.reasoning_effort > spec.default_reasoning_effort > 'medium'` | retry round auto-bumps one tier (unless phase pinned); explicit `high` / `xhigh` on phase block for cross-module / fragile / security-sensitive phases |
+| **retry worker** | same as worker + auto +1 tier (medium → high → xhigh) | phase-block-pinned `reasoning_effort` disables auto-bump |
+| **verifier** | `gpt-5.5`, same resolved effort as the worker for the same phase | verifier JSON inconsistent → escalate one tier on next round (auto) |
 | decision reviewer | `gpt-5.5`, `xhigh` reasoning | always for auto-decisions, including simple local decisions |
 | final E2E2/report subagent | `gpt-5.5`, `xhigh` reasoning | always for final E2E2 screenshot report |
 | final alignment reviewer | `gpt-5.5`, `xhigh` reasoning | always before declaring complete |

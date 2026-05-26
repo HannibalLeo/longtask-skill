@@ -64,7 +64,7 @@ runs both codex and claude per round by construction.
   secondary" pattern was retired because every cross-round itself already
   digests cross-model signal.
 - New terminal gate per stage: `cross-rounds-final-review` runs as
-  Claude opus 4.7 max once per stage, immediately after the consensus editor,
+  Claude opus 4.7 xhigh once per stage, immediately after the consensus editor,
   with three verdicts: `PASS_CLEAN`, `PASS_WITH_RESIDUAL_RISKS` (carries
   blindspot list forward to downstream gates), `NEEDS_REVISION` (loops once
   to consensus editor with explicit `needs_revision_reasons[]`, then BLOCKED).

@@ -1,0 +1,18 @@
+{
+  "blocked_reason": null,
+  "first_blocked_phase": null,
+  "overall_status": "ALL_PASS",
+  "preserved_phase_commits": [
+    {
+      "commit_sha": "1111111111111111111111111111111111111111",
+      "phase_id": "P3"
+    },
+    {
+      "commit_sha": "2222222222222222222222222222222222222222",
+      "phase_id": "P4"
+    }
+  ],
+  "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P8",
+  "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry",
+  "safe_path_recovery_command": "claude-longtask-code .longtask/plans/spec.md --safe-path"
+}

@@ -1,0 +1,28 @@
+{
+  "artifact_chain": [
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/temp-handoff-manifest.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/temp-codex-code-exit.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/temp-review-stage-result.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/evidence-classification.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/value-measurement.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/safe-path-evidence.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/non-mutation-proof.json"
+  ],
+  "blocked_or_partial_pass_verified": true,
+  "browser_target_input": "",
+  "final_evidence_cases_total": 2,
+  "generated_at": "2026-05-26T13:12:29Z",
+  "group_summary": {
+    "final-evidence-classification": {
+      "fail": 0,
+      "pass": 2,
+      "total": 2
+    }
+  },
+  "happy_path_verified": true,
+  "resolved_browser_target": "",
+  "selected_groups": [
+    "final-evidence-classification"
+  ],
+  "temp_fixture_root": "/private/var/folders/db/yr0pgw7n0zd83tm57_7d8py80000gn/T/dual-harness-smoke.kqmfnl/temp-fixture-repo"
+}

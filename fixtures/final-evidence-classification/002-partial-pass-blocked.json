@@ -1,0 +1,93 @@
+{
+  "case_id": "final-evidence-partial-pass-blocked",
+  "description": "Partial-pass evidence keeps preserved commits and recovery routes while blocking unsupported browser/safe-path/value claims.",
+  "case_type": "contract_case",
+  "actual": {
+    "workflow_outcome": "PARTIAL_PASS",
+    "blocked_reason": "BLOCKED_HARNESS_BACKGROUND",
+    "first_blocked_phase": "P8",
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "recovery_routes": {
+      "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P8",
+      "safe_path_recovery_command": "claude-longtask-code .longtask/plans/spec.md --safe-path",
+      "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry"
+    },
+    "evidence_classification": {
+      "mechanical_evidence_classification": "mechanical_blocked",
+      "browser_evidence_classification": "blocked",
+      "safe_path_evidence_level": "blocked",
+      "value_claim": "blocked_no_claim",
+      "browser_target_detected": true,
+      "overclaim_guard_passed": true,
+      "artifact_bundle": [
+        ".longtask/reports/spec/final-smoke/evidence-classification.json",
+        ".longtask/reports/spec/final-smoke/value-measurement.json",
+        ".longtask/reports/spec/final-smoke/safe-path-evidence.json",
+        ".longtask/reports/spec/final-smoke/non-mutation-proof.json",
+        ".longtask/reports/spec/final-smoke/fixture-summary.json"
+      ]
+    },
+    "safe_path_evidence": {
+      "safe_path_evidence_level": "blocked",
+      "blocked_reason": "BLOCKED_HARNESS_BACKGROUND"
+    },
+    "value_measurement": {
+      "workflow_variant": "dual_harness_fast_path",
+      "claim": "blocked_no_claim",
+      "baseline_source": "blocked_before_baseline",
+      "speedup_claim_allowed": false
+    },
+    "non_mutation_proof": {
+      "real_codex_home_mutated": false,
+      "real_claude_home_mutated": false,
+      "global_package_manager_mutated": false,
+      "remote_refs_changed": false,
+      "push_invoked": false,
+      "pr_invoked": false,
+      "publish_invoked": false,
+      "deploy_invoked": false,
+      "ship_invoked": false
+    }
+  },
+  "expected": {
+    "workflow_outcome": "PARTIAL_PASS",
+    "blocked_reason": "BLOCKED_HARNESS_BACKGROUND",
+    "first_blocked_phase": "P8",
+    "evidence_classification": {
+      "mechanical_evidence_classification": "mechanical_blocked",
+      "browser_evidence_classification": "blocked",
+      "safe_path_evidence_level": "blocked",
+      "value_claim": "blocked_no_claim",
+      "browser_target_detected": true,
+      "overclaim_guard_passed": true
+    },
+    "safe_path_evidence": {
+      "safe_path_evidence_level": "blocked",
+      "blocked_reason": "BLOCKED_HARNESS_BACKGROUND"
+    },
+    "value_measurement": {
+      "claim": "blocked_no_claim",
+      "speedup_claim_allowed": false
+    },
+    "non_mutation_proof": {
+      "real_codex_home_mutated": false,
+      "real_claude_home_mutated": false,
+      "global_package_manager_mutated": false,
+      "remote_refs_changed": false,
+      "push_invoked": false,
+      "pr_invoked": false,
+      "publish_invoked": false,
+      "deploy_invoked": false,
+      "ship_invoked": false
+    }
+  }
+}

@@ -96,7 +96,10 @@
     },
     "final-evidence-classification": {
       "description": "Owned by P8.",
-      "cases": []
+      "cases": [
+        "fixtures/final-evidence-classification/001-happy-path-no-browser.json",
+        "fixtures/final-evidence-classification/002-partial-pass-blocked.json"
+      ]
     }
   }
 }

@@ -1,0 +1,16 @@
+{
+  "artifact_bundle": [
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/evidence-classification.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/value-measurement.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/safe-path-evidence.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/non-mutation-proof.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/fixture-summary.json",
+    ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/screenshots-not-applicable.md"
+  ],
+  "browser_evidence_classification": "no_browser_not_applicable",
+  "browser_target_detected": false,
+  "mechanical_evidence_classification": "mechanical_pass",
+  "overclaim_guard_passed": true,
+  "safe_path_evidence_level": "bounded_behavior",
+  "value_claim": "baseline_not_rerun"
+}

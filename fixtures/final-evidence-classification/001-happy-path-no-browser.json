@@ -1,0 +1,85 @@
+{
+  "case_id": "final-evidence-happy-path-no-browser",
+  "description": "Happy-path final evidence uses no-browser-not-applicable when no browser target exists and keeps JSON-backed non-mutation guarantees.",
+  "case_type": "contract_case",
+  "actual": {
+    "workflow_outcome": "ALL_PASS",
+    "evidence_classification": {
+      "mechanical_evidence_classification": "mechanical_pass",
+      "browser_evidence_classification": "no_browser_not_applicable",
+      "safe_path_evidence_level": "bounded_behavior",
+      "value_claim": "baseline_not_rerun",
+      "browser_target_detected": false,
+      "overclaim_guard_passed": true,
+      "artifact_bundle": [
+        ".longtask/reports/spec/final-smoke/evidence-classification.json",
+        ".longtask/reports/spec/final-smoke/value-measurement.json",
+        ".longtask/reports/spec/final-smoke/safe-path-evidence.json",
+        ".longtask/reports/spec/final-smoke/non-mutation-proof.json",
+        ".longtask/reports/spec/final-smoke/fixture-summary.json",
+        ".longtask/reports/spec/final-smoke/screenshots-not-applicable.md"
+      ]
+    },
+    "safe_path_evidence": {
+      "safe_path_evidence_level": "bounded_behavior",
+      "codex_step6_phase_count": 9,
+      "claude_callbacks_during_step6": 0,
+      "recovery_ready": true
+    },
+    "value_measurement": {
+      "workflow_variant": "dual_harness_fast_path",
+      "claim": "baseline_not_rerun",
+      "baseline_source": "not_available_in_p8_rerun",
+      "speedup_claim_allowed": false
+    },
+    "non_mutation_proof": {
+      "real_codex_home_mutated": false,
+      "real_claude_home_mutated": false,
+      "global_package_manager_mutated": false,
+      "remote_refs_changed": false,
+      "push_invoked": false,
+      "pr_invoked": false,
+      "publish_invoked": false,
+      "deploy_invoked": false,
+      "ship_invoked": false
+    }
+  },
+  "expected": {
+    "workflow_outcome": "ALL_PASS",
+    "evidence_classification": {
+      "mechanical_evidence_classification": "mechanical_pass",
+      "browser_evidence_classification": "no_browser_not_applicable",
+      "safe_path_evidence_level": "bounded_behavior",
+      "value_claim": "baseline_not_rerun",
+      "browser_target_detected": false,
+      "overclaim_guard_passed": true,
+      "artifact_bundle": [
+        ".longtask/reports/spec/final-smoke/evidence-classification.json",
+        ".longtask/reports/spec/final-smoke/value-measurement.json",
+        ".longtask/reports/spec/final-smoke/safe-path-evidence.json",
+        ".longtask/reports/spec/final-smoke/non-mutation-proof.json",
+        ".longtask/reports/spec/final-smoke/fixture-summary.json",
+        ".longtask/reports/spec/final-smoke/screenshots-not-applicable.md"
+      ]
+    },
+    "safe_path_evidence": {
+      "safe_path_evidence_level": "bounded_behavior",
+      "claude_callbacks_during_step6": 0
+    },
+    "value_measurement": {
+      "claim": "baseline_not_rerun",
+      "speedup_claim_allowed": false
+    },
+    "non_mutation_proof": {
+      "real_codex_home_mutated": false,
+      "real_claude_home_mutated": false,
+      "global_package_manager_mutated": false,
+      "remote_refs_changed": false,
+      "push_invoked": false,
+      "pr_invoked": false,
+      "publish_invoked": false,
+      "deploy_invoked": false,
+      "ship_invoked": false
+    }
+  }
+}

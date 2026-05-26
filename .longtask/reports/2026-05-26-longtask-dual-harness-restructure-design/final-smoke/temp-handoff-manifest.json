@@ -1,0 +1,9 @@
+{
+  "codex_handoff_compatible": true,
+  "final_e2e2_cmd": "bash scripts/e2e-dual-harness-smoke.sh",
+  "final_verify_cmd": "bash scripts/verify-all.sh",
+  "manifest_version": "0.3.0",
+  "workflow_routing": {
+    "routing_decision": "fast_allowed"
+  }
+}

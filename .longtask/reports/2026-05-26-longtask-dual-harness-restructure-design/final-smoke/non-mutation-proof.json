@@ -1,0 +1,15 @@
+{
+  "deploy_invoked": false,
+  "generated_at": "2026-05-26T13:12:29Z",
+  "global_package_manager_mutated": false,
+  "mutation_check_basis": "local fixture-only smoke; no runtime home writes",
+  "pr_invoked": false,
+  "publish_invoked": false,
+  "push_invoked": false,
+  "real_claude_home": "/Users/leoleon/.claude",
+  "real_claude_home_mutated": false,
+  "real_codex_home": "/Users/leoleon/.codex",
+  "real_codex_home_mutated": false,
+  "remote_refs_changed": false,
+  "ship_invoked": false
+}

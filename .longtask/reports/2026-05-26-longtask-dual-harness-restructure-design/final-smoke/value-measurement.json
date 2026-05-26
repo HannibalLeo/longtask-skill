@@ -1,0 +1,15 @@
+{
+  "baseline_source": "baseline_not_rerun",
+  "block_count": 0,
+  "claim": "baseline_not_rerun",
+  "claude_callbacks_during_step6": 0,
+  "codex_step6_phase_count": 9,
+  "model_call_availability": "fixture_driven_only",
+  "old_path_comparison_mode": "not_rerun",
+  "phase_count": 9,
+  "retry_count": 0,
+  "review_stage_count": 13,
+  "speedup_claim_allowed": false,
+  "wall_clock_seconds": 0.0,
+  "workflow_variant": "dual_harness_fast_path"
+}

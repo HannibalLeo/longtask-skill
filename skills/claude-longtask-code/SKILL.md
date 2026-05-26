@@ -39,6 +39,30 @@ Skip in favor of full `/longtask` when:
 - The plan does not yet exist or has not been validated through Step 5.
 - You want one command to plan + ship.
 
+## Codex role boundary (load-bearing invariant — REQ-008, 2026-05-27 refactor)
+
+In `claude-longtask-code` (Steps 6-9 of the parent pipeline), codex sub-agents
+are limited to two role categories — Discussion and Verification — identical
+to the parent `claude-longtask` skill:
+
+- **Discussion**: none active inside Steps 6-9 (the roundtable Discussion
+  slots — codex-phase lens, codex mid-summary, codex spec sanity — already
+  ran in Steps 2-3 / 4b before this skill starts). Codex tie-breaker
+  (codex-clarification) when invoked is a single-shot second opinion and
+  counts as Discussion.
+- **Verification**: phase verifier (Step 6 — `codex exec --output-schema`),
+  decision-review secondary (Step 6 decision gate), final-alignment
+  secondary (Step 8 mandatory-dual gate).
+
+**All authoring and worker roles stay on Claude**: Step 6 phase worker
+(moved to Claude in the 2026-05-26 refactor — `claude-worker.md` via Agent
+tool), decision-review primary, final-alignment primary, final E2E2 report,
+docs-sync, ship.
+
+See `skills/claude-longtask/SKILL.md` § "Codex role boundary" for the full
+rule. The Role × Model dispatch table in that file has been audited; no
+codex row primaries an authoring or worker role.
+
 ## Owner four-step (subset)
 
 | Step | Owner | Scope (subset of /longtask) |

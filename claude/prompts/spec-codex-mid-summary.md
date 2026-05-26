@@ -68,68 +68,53 @@ header.
 {repo_evidence_summary}
 ```
 
-## Summarization Rules
+## Summarization Rules — digest format (REQ-005, 2026-05-27 refactor)
 
-1. **Compress, do not paraphrase.** Quote the lens output's own wording when
-   it captures the proposal precisely. Do not introduce new edits the lenses
-   did not propose.
-2. **Cluster proposals.** Group edits that target the same spec section or
-   the same risk. List the lens(es) that contributed each cluster.
-3. **Cross-lens disagreements.** Where codex lenses disagreed with each other,
-   surface that explicitly. The claude phase needs to see disagreement, not
-   smoothed-over consensus.
-4. **Codex blindspots — signal the claude phase to probe.** Where the codex
-   lens output looks suspiciously aligned (all lenses agreeing without
-   challenge), flag the cluster as `agreement_to_verify` so the claude phase
-   knows to scrutinize it.
-5. **Preserve every source-spec requirement.** If any codex lens proposed
-   dropping or weakening a REQ-* anchor, surface it as `at_risk_requirements`.
-6. **Stay terse.** Output should be readable in under a minute. The claude
-   phase will read this AND the raw codex outputs.
+The output is a **compressed digest**, not a re-paste of the lens outputs.
+The Phase 3 (claude lens) prompts consume this digest as their sole codex
+input channel — they do **NOT** see the raw codex lens outputs (which
+remain on disk at `.longtask/reports/{spec}/rounds/spec-round-{R}/codex-lens-*.json`
+for audit only). Compress accordingly:
 
-## Required Artifact
+1. **One bullet per codex lens position.** Maximum **25 words** each. Each
+   bullet summarises that lens's net judgement (proposed edits + key risk
+   it surfaced + any REQ-* it flagged) — not a paraphrase, the actionable
+   signal. If a lens produced nothing material, write "no material edit"
+   in ≤10 words. Do not introduce edits the lens did not propose.
+2. **One Codex-vs-Claude disagreement table.** Maximum **5 rows**.
+   Surface the highest-tension disagreements where the codex-side reading
+   diverges from the prior round's claude-side end-summary (or, on
+   round 1, where the codex lenses themselves disagree among each other
+   in ways the claude phase will need to resolve). One row per
+   disagreement, ranked by impact-on-the-source-spec.
+3. **REQ-* at risk** — fold into bullets/rows: if a codex lens proposed
+   dropping or weakening a REQ-* anchor, that goes into that lens's
+   bullet AND, if material, into the disagreement table. No separate
+   section.
+4. **Stay strict on length.** Whole digest target ≤ 40 lines of markdown.
+   The token win comes from Phase 3 NOT re-ingesting the ~5 raw lens
+   outputs — that win disappears if the digest itself bloats.
+
+## Required Artifact — digest format
 
 Write to: `{output_path}`
 
-Use this exact Markdown structure:
+Use this exact Markdown structure (and no other sections):
 
 ```markdown
-# Spec Round {round_number} Codex Mid-Summary
+# Spec Round {round_number} Codex Mid-Summary (digest)
 
-## Codex-Side Convergence
+## Per-Lens Positions (one bullet per codex lens, ≤25 words each)
 
-| Cluster ID | Spec Section / Risk | Proposal | Contributing Lenses | Confidence |
-|---|---|---|---|---|
+- **engineering** — <≤25-word net position, including any REQ-* flagged>
+- **ceo-product** — <≤25-word net position>
+- **<lens>** — <≤25-word net position>
+- ... (one bullet per lens in `required_lenses`; "no material edit" allowed)
 
-## Codex-Side Disagreements
+## Codex-vs-Claude Disagreements (max 5 rows)
 
-| Topic | Lens A Position | Lens B Position | Open Question for Claude Phase |
+| Lens | Codex Position (≤30 words) | Claude Position (prior round / "(round 1 — no prior)") | Reconciliation Proposal (≤30 words) |
 |---|---|---|---|
-
-## Agreement_to_Verify (Codex Blindspot Candidates)
-
-Clusters where all codex lenses agreed without challenge. The claude phase
-should probe these — if claude lenses also agree, that is real consensus; if
-claude lenses disagree, the codex side has a same-distribution blindspot.
-
-| Cluster ID | Proposal | Why Worth Probing |
-|---|---|---|
-
-## At_Risk_Requirements
-
-REQ-* anchors that any codex lens proposed dropping, weakening, or marking
-out-of-scope. Each entry: anchor + which lens + proposed weakening + reason
-given.
-
-| REQ-* | Lens | Proposed Weakening | Reason Given |
-|---|---|---|---|
-
-## Signals_For_Claude_Phase
-
-Direct questions or scrutiny points the claude phase should treat as priority.
-Bullet list. Keep ≤7 items.
-
-- ...
 ```
 
 ## Final Response
@@ -142,10 +127,9 @@ Return exactly one JSON object:
   "stage": "spec",
   "round_number": 1,
   "codex_mid_summary_path": "<output_path>",
-  "convergence_cluster_count": 0,
-  "disagreement_count": 0,
-  "agreement_to_verify_count": 0,
-  "at_risk_requirements": [],
+  "per_lens_bullet_count": 0,
+  "disagreement_row_count": 0,
+  "at_risk_requirements_inlined": [],
   "blocked_reason": ""
 }
 ```

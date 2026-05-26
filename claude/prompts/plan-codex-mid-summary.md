@@ -74,79 +74,56 @@ in this round, concatenated.
 {repo_evidence_summary}
 ```
 
-## Summarization Rules
+## Summarization Rules — digest format (REQ-005, 2026-05-27 refactor)
 
-1. **Compress, do not paraphrase.** Quote lens output verbatim when it
-   captures a plan edit precisely. Do not introduce new edits the lenses did
-   not propose.
-2. **Cluster by phase + field.** Group edits that target the same `Pn` /
-   field (`goals`, `dod[i]`, `verify_cmd`, `file_scope`, `do_not_touch`, etc.).
-3. **Phase decomposition signals.** Aggregate the codex lenses' Phase
-   Decomposition Review scores (✅ / ⚠️ / ❌) into a per-phase signal:
-   highest-disagreement-count first. The claude phase needs to know which
-   phases the codex side is most uncertain about.
-4. **REQ-* coverage delta.** Highlight any REQ-* anchor where codex lenses
-   converged on a `status` change (e.g., covered → partial, covered →
-   out_of_scope). The claude phase must verify these are acceptable, not
-   reward-hacked drops.
-5. **Codex blindspots — signal the claude phase to probe.** Where all codex
-   lenses agreed without challenge, flag the cluster as `agreement_to_verify`.
-6. **Plan integrity flags.** Any codex lens proposed edits that would weaken
-   `do_not_touch` protection, relax `verify_passes_when`, or drop a `dod`
-   bullet → flag as `plan_integrity_at_risk`.
-7. **Stay terse.** ≤2 pages.
+The output is a **compressed digest**, not a re-paste of the lens outputs.
+The Phase 3 (claude lens) prompts consume this digest as their sole codex
+input channel — they do **NOT** see the raw codex lens outputs (which
+remain on disk at `.longtask/reports/{spec}/rounds/plan-round-{R}/codex-lens-*.json`
+for audit only). Compress accordingly:
 
-## Required Artifact
+1. **One bullet per codex lens position.** Maximum **25 words** each. Each
+   bullet summarises that lens's net judgement on the plan (proposed phase
+   edits + the field most under attack + any `do_not_touch` / `dod` /
+   `verify_passes_when` weakening flagged + any REQ-* coverage delta) —
+   not a paraphrase, the actionable signal. If a lens produced no
+   material edits, write "no material edit" in ≤10 words.
+2. **One Codex-vs-Claude disagreement table.** Maximum **5 rows**.
+   Surface the highest-tension disagreements where the codex-side reading
+   of the plan diverges from the prior round's claude-side end-summary
+   (or, on round 1, where the codex lenses themselves diverge in ways
+   the claude phase will need to resolve). Rank by impact — plan-
+   integrity risks (do_not_touch / verify_passes_when / dod weakening)
+   come before stylistic disagreements.
+3. **Plan-integrity flags + REQ-* coverage deltas** — fold into bullets
+   and rows: if a codex lens proposed weakening `do_not_touch`,
+   `verify_passes_when`, or dropping a `dod` bullet / REQ-* anchor, that
+   goes into that lens's bullet AND, if material, into the disagreement
+   table. No separate section.
+4. **Stay strict on length.** Whole digest target ≤ 40 lines of markdown.
+   The token win comes from Phase 3 NOT re-ingesting the raw lens
+   outputs — that win disappears if the digest itself bloats.
+
+## Required Artifact — digest format
 
 Write to: `{output_path}`
 
-Use this exact Markdown structure:
+Use this exact Markdown structure (and no other sections):
 
 ```markdown
-# Plan Round {round_number} Codex Mid-Summary
+# Plan Round {round_number} Codex Mid-Summary (digest)
 
-## Codex-Side Convergence
+## Per-Lens Positions (one bullet per codex lens, ≤25 words each)
 
-| Cluster ID | Phase | Field | Proposed Edit | Contributing Lenses | Confidence |
-|---|---|---|---|---|---|
+- **engineering** — <≤25-word net position, including any plan-integrity flag>
+- **ceo-product** — <≤25-word net position>
+- **<lens>** — <≤25-word net position>
+- ... (one bullet per lens in `plan_required_lenses`; "no material edit" allowed)
 
-## Codex-Side Disagreements
+## Codex-vs-Claude Disagreements (max 5 rows)
 
-| Topic | Phase | Lens A Position | Lens B Position | Open Question for Claude Phase |
-|---|---|---|---|---|
-
-## Phase Decomposition Concern Heatmap
-
-| Phase | Codex Lens Score Distribution | Top Concern | Open Question |
+| Lens | Codex Position (≤30 words) | Claude Position (prior round / "(round 1 — no prior)") | Reconciliation Proposal (≤30 words) |
 |---|---|---|---|
-
-Score distribution as `✅×n / ⚠️×m / ❌×k` counts across the 5 codex lens
-outputs.
-
-## Agreement_to_Verify (Codex Blindspot Candidates)
-
-| Cluster ID | Phase | Proposed Edit | Why Worth Probing |
-|---|---|---|---|
-
-## REQ_Coverage_Delta_Proposed
-
-| REQ-* | Current Status | Proposed Status | Lens(es) | Reason Given |
-|---|---|---|---|---|
-
-## Plan_Integrity_At_Risk
-
-Edits that would weaken `do_not_touch`, relax `verify_passes_when`, drop a
-`dod` bullet, or otherwise reduce verifier observability.
-
-| Phase | Field | Proposed Weakening | Lens | Reason Given |
-|---|---|---|---|---|
-
-## Signals_For_Claude_Phase
-
-Direct questions or scrutiny points the claude phase should treat as priority.
-Bullet list. Keep ≤7 items.
-
-- ...
 ```
 
 ## Final Response
@@ -159,11 +136,10 @@ Return exactly one JSON object:
   "stage": "plan",
   "round_number": 1,
   "codex_mid_summary_path": "<output_path>",
-  "convergence_cluster_count": 0,
-  "disagreement_count": 0,
-  "agreement_to_verify_count": 0,
-  "plan_integrity_at_risk_count": 0,
-  "req_coverage_delta_count": 0,
+  "per_lens_bullet_count": 0,
+  "disagreement_row_count": 0,
+  "plan_integrity_at_risk_inlined": [],
+  "req_coverage_delta_inlined": [],
   "blocked_reason": ""
 }
 ```

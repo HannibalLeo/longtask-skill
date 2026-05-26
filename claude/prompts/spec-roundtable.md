@@ -29,8 +29,16 @@ cross-pair by construction; there is no lens-model routing knob.
 
 Substitutions: `{input_path}`, `{input_sha256}`, `{round_number}`,
 `{phase}`, `{specialist_role}`, `{classification_json}`, `{source_spec_text}`,
-`{prior_round_state}`, `{codex_phase_outputs}`, `{codex_mid_summary}`,
+`{prior_round_state}`, `{codex_mid_summary_digest}`,
 `{repo_evidence_summary}`, `{output_path}`.
+
+> **REQ-005 (2026-05-27 token-waste refactor):** Phase 3 (claude lens)
+> inputs receive the **codex mid-summary digest only** (per-lens bullets +
+> one Codex-vs-Claude disagreement table — see `spec-codex-mid-summary.md`).
+> Raw codex-lens outputs stay on disk at
+> `.longtask/reports/{spec}/rounds/spec-round-{R}/codex-lens-*.json` for
+> audit and consensus-editor drill-down — they are **NOT** re-injected into
+> Phase 3 lens prompts. The legacy `{codex_phase_outputs}` token is gone.
 
 ---
 
@@ -50,7 +58,8 @@ mid-summary (if `phase==codex`) or the claude end-summary (if `phase==claude`)
 
 - Round: `{round_number}` (of `classification.cross_rounds`)
 - Phase: `{phase}` (`codex` = early reading, no claude input; `claude` = late
-  reading, sees codex phase outputs + codex mid-summary)
+  reading, sees the codex mid-summary digest only — raw codex lens outputs
+  remain on disk for audit, not re-injected here)
 - Specialist role: `{specialist_role}`
 
 ## Classification
@@ -71,21 +80,18 @@ mid-summary (if `phase==codex`) or the claude end-summary (if `phase==claude`)
 {prior_round_state}
 ```
 
-## Codex Phase Outputs for This Round (read only when `phase==claude`; empty when `phase==codex`)
+## Codex Mid-Summary Digest for This Round (read only when `phase==claude`; empty when `phase==codex`)
 
-When you are running as the `claude` phase, this section contains all 5
-lens outputs from the codex phase of THIS round. Your job is not to copy them —
-your job is to bring an independent lens to the same questions, then explicitly
-agree, disagree, or extend.
-
-```markdown
-{codex_phase_outputs}
-```
-
-## Codex Mid-Summary for This Round (read only when `phase==claude`; empty when `phase==codex`)
+The codex phase's compressed digest (per-lens bullets ≤25 words each plus a
+single Codex-vs-Claude disagreement table, ≤5 rows). This is the **sole
+codex input channel** for the Phase 3 claude lens — the raw 5 codex lens
+outputs stay on disk for audit but are NOT injected here (digest output
+contract per REQ-005). Bring an independent lens to the questions surfaced
+in the digest; explicitly agree, disagree, or extend per the bullets and
+disagreement table.
 
 ```markdown
-{codex_mid_summary}
+{codex_mid_summary_digest}
 ```
 
 ## Repo Evidence Summary

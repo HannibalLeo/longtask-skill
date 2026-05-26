@@ -12,6 +12,24 @@
 
 ---
 
+## Codex role boundary (load-bearing invariant — REQ-008, 2026-05-27 refactor)
+
+Codex sub-agents are limited to **two role categories** in claude-flow:
+
+- **Discussion**: spec-roundtable codex-phase lens (Step 2 P1), plan-roundtable
+  codex-phase lens (Step 4b P1), codex mid-round summary (Step 2 P2 / Step 4b
+  P2), codex spec sanity (Step 3).
+- **Verification**: phase verifier (Step 6), plan-integrity secondary
+  (Step 5), decision-review secondary (Step 6 gate), final-alignment
+  secondary (Step 8).
+
+**All authoring, editing, and worker roles stay on Claude:** spec classifier,
+spec / plan consensus editors, plan writer, spec / plan round-state editors,
+spec / plan cross-rounds final review, final E2E2 report, decision-review
+primary, plan-integrity primary, final-alignment primary, docs-sync, ship,
+and the Step 6 phase worker. Any new role that lands here MUST classify into
+one of those two codex categories above; otherwise it stays on Claude.
+
 ## Owner 四步分工（必读不可改）
 
 **(a) Claude 做架构** — input classification, plan writing, plan-integrity review,
@@ -119,6 +137,23 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
    `suggested_roundtable_mode`, `discussion_rounds`, `discussion_required`)
    are REJECTED — re-dispatch with explicit "remove these fields" instruction
    before BLOCKED.
+
+   **REQ-007 defensive check (2026-05-27 token-waste refactor): classifier
+   may not emit `cross_rounds == 3`.** The classifier's default is 1, its
+   auto-cap is 2. `cross_rounds: 3` is only legal when the user set
+   `spec.cross_rounds: 3` in spec frontmatter (the frontmatter override
+   below overrides the classifier value). If the classifier JSON contains
+   `"cross_rounds": 3` and the user did NOT set `spec.cross_rounds: 3` in
+   frontmatter, **that is a classifier bug**: re-dispatch the classifier
+   once with the explicit reminder "auto-cap is 2; emit 2 with the
+   high-risk trigger cited in risk_reasons", and on a second occurrence
+   downgrade the value to 2 in state (preserving the classifier's
+   `risk_reasons[]` for audit). Only `spec.cross_rounds: 3` from
+   frontmatter is allowed to produce the final `cross_rounds == 3`.
+6. **Apply `spec.cross_rounds` frontmatter override.** If the input spec
+   has `spec.cross_rounds` in its frontmatter, it takes precedence over
+   the classifier value (precedence: frontmatter > classifier > default).
+   This is the only legal path to `cross_rounds: 3`.
 3. Persist to `state.classification_path`.
 4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} →
    - **Plan-shape strict frontmatter check (moved from Step 0):** the input is
@@ -197,23 +232,33 @@ For each round R in 1..cross_rounds:
    Dispatch all lenses concurrently. Collect outputs (markdown payload from
    `last_message` JSON) into `Phase1_codex_lens_outputs`.
 
-2. **Phase 2 (codex mid-summary)** — single codex exec with
-   `prompts/spec-codex-mid-summary.md` substituted with
-   `{codex_phase_outputs} = Phase1_codex_lens_outputs`,
-   `{round_number} = R`, prior round-state etc. Writes
+2. **Phase 2 (codex mid-summary — digest output per REQ-005)** — single codex
+   exec with `prompts/spec-codex-mid-summary.md` substituted with
+   `{codex_phase_outputs} = Phase1_codex_lens_outputs` (read by codex to
+   produce the digest; not re-injected downstream),
+   `{round_number} = R`, prior round-state etc. The mid-summary writes a
+   **compressed digest** (per-lens bullets ≤25 words + one Codex-vs-Claude
+   disagreement table, ≤5 rows) to
    `.longtask/reports/{spec}/rounds/spec-round-{R}-codex-mid-summary.md`.
+   Read the resulting file as `Phase2_codex_mid_summary_digest`.
 
 3. **Phase 3 (claude lens output)** — for each lens in `required_lenses`:
    - Dispatch Claude Agent with `prompts/spec-roundtable.md` substituted with
      `{phase} = claude`, `{specialist_role} = {lens}`,
-     `{codex_phase_outputs} = Phase1_codex_lens_outputs`,
-     `{codex_mid_summary} = Phase2 output`, prior round-state etc.
+     `{codex_mid_summary_digest} = Phase2_codex_mid_summary_digest`,
+     prior round-state etc. The raw `Phase1_codex_lens_outputs` are **NOT**
+     injected (digest output contract per REQ-005) — they stay on disk for
+     audit at the per-lens JSON paths above.
    Dispatch all lenses concurrently. Collect outputs into
    `Phase3_claude_lens_outputs`.
 
 4. **Phase 4 (claude end-summary, writes round-state)** — single Claude Agent
    with `prompts/spec-round-state.md` substituted with
-   `{codex_phase_outputs}`, `{codex_mid_summary}`,
+   `{codex_phase_outputs} = Phase1_codex_lens_outputs` (round-state editor
+   still receives raw lens outputs — it adjudicates per-lens positions, so
+   it gets the unfiltered material; the digest is the Phase 3 lens channel
+   only), `{codex_mid_summary} = Phase2_codex_mid_summary_digest` (the
+   digest functions as the mid-summary input for round-state too),
    `{claude_phase_outputs} = Phase3_claude_lens_outputs`, etc.
    Writes round-state to
    `.longtask/reports/{spec}/rounds/spec-round-{R}-state.md` and returns
@@ -359,12 +404,47 @@ plan-roundtable runs at `cross_rounds` because the plan is the final
 execution contract. Skipping Step 4b is illegal regardless of input shape; the
 only knob is `cross_rounds ∈ {1, 2, 3}`.
 
+**Plan-stage lens set is a pruned subset of the spec-stage set (REQ-004).**
+(Hereafter referred to as the **plan-stage lens set** — distinct from the
+classifier-emitted spec-stage `required_lenses`.)
+The plan-stage roundtable does NOT consume the classifier's full
+`required_lenses` verbatim — UI-design and domain-expert lenses contribute
+little to phase decomposition / `file_scope` / `verify_cmd` authoring, since
+their value has already landed in the enhanced spec at the end of Step 2.
+Derive `plan_required_lenses` from `required_lenses` using these rules:
+
+1. **Always include** `engineering` and `ceo-product` (when present in the
+   classifier set). These are the universal plan-stage lenses — engineering
+   judges phase decomposition / verifier observability / `file_scope`
+   correctness; ceo-product judges whether the phase order ships product
+   value incrementally.
+2. **Include `ui-design`** only when at least one phase in the plan has
+   `file_scope` matching a frontend / UI glob (`**/*.tsx`, `**/*.vue`,
+   `frontend/**`, `web/**`, `ui/**`, `components/**`, etc.).
+3. **Include `domain-expert`** only when at least one phase in the plan has
+   `file_scope` matching the spec's domain-specific paths (cite the domain
+   match in the orchestrator state).
+4. **Include `design`** only when at least one phase produces user-visible
+   surface area (UI mockups, layout, copy, brand) — same `file_scope` test
+   as `ui-design`, plus content/copy paths.
+
+Persist the resolved `plan_required_lenses` to
+`state.plan_required_lenses` with a one-line `plan_lens_pruning_reason`
+explaining which lenses were dropped and why (for audit). If the pruned
+set ends up identical to the spec-stage set (rare, e.g. an all-domain
+spec), that is fine — just record "no pruning applied; all spec lenses
+match plan phases".
+
+The Step 4b dispatches below use `plan_required_lenses` (the pruned set),
+not `required_lenses` (the spec-stage set).
+
 **Roundtable shape — identical to Step 2** (cross-pair, no `hybrid` / `dual`
 knob).
 
 For each round R in 1..cross_rounds:
 
-1. **Phase 1 (codex lens output)** — for each lens in `required_lenses`:
+1. **Phase 1 (codex lens output)** — for each lens in `plan_required_lenses`
+   (the pruned subset; see § Plan-stage lens set above):
    ```bash
    bash lib/codex-wrapper.sh \
      <prompt-file-plan-roundtable-with-phase=codex-and-lens={lens}> \
@@ -377,16 +457,23 @@ For each round R in 1..cross_rounds:
    plan text, enhanced spec, alignment matrix, and prior plan-round-state (if
    any). Collect outputs into `Phase1_codex_plan_lens_outputs`.
 
-2. **Phase 2 (codex mid-summary)** — single codex exec with
-   `prompts/plan-codex-mid-summary.md` substituted with
-   `{codex_phase_outputs} = Phase1_codex_plan_lens_outputs`, `{round_number} = R`,
-   prior round-state etc. Writes
+2. **Phase 2 (codex mid-summary — digest output per REQ-005)** — single codex
+   exec with `prompts/plan-codex-mid-summary.md` substituted with
+   `{codex_phase_outputs} = Phase1_codex_plan_lens_outputs` (codex-only input;
+   not propagated downstream), `{round_number} = R`, prior round-state etc.
+   Writes a **compressed digest** (per-lens bullets ≤25 words + one
+   Codex-vs-Claude disagreement table, ≤5 rows) to
    `.longtask/reports/{spec}/rounds/plan-round-{R}-codex-mid-summary.md`.
+   Read the resulting file as `Phase2_plan_codex_mid_summary_digest`.
 
-3. **Phase 3 (claude lens output)** — for each lens in `required_lenses`:
+3. **Phase 3 (claude lens output)** — for each lens in `plan_required_lenses`
+   (the pruned subset):
    - Dispatch Claude Agent with `prompts/plan-roundtable.md` substituted with
      `{phase} = claude`, `{specialist_role} = {lens}`,
-     `{codex_phase_outputs}`, `{codex_mid_summary}`, prior round-state.
+     `{codex_mid_summary_digest} = Phase2_plan_codex_mid_summary_digest`,
+     prior round-state. The raw `Phase1_codex_plan_lens_outputs` are NOT
+     injected (digest output contract per REQ-005) — they remain on disk
+     for audit only.
    Dispatch all lenses concurrently. Collect outputs into
    `Phase3_claude_plan_lens_outputs`.
 

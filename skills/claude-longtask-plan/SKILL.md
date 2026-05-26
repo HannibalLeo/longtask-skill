@@ -36,12 +36,33 @@ Skip in favor of full `/longtask` when:
   anyway (no review loop in between).
 - You want one command to plan + ship.
 
+## Codex role boundary (load-bearing invariant — REQ-008, 2026-05-27 refactor)
+
+In `claude-longtask-plan` (Steps 0-5), codex sub-agents are limited to two
+role categories — Discussion and Verification — identical to the parent
+`claude-longtask` skill:
+
+- **Discussion**: spec-roundtable codex-phase lens (Step 2 Phase 1),
+  plan-roundtable codex-phase lens (Step 4b Phase 1), codex mid-round
+  summary (Step 2 Phase 2 / Step 4b Phase 2 — emits digest per REQ-005),
+  codex spec sanity audit (Step 3).
+- **Verification**: plan-integrity secondary (Step 5 hybrid gate).
+
+**All authoring stays on Claude**: spec classifier, spec / plan consensus
+editors, plan writer, spec / plan round-state editors, spec / plan
+cross-rounds final review, plan-integrity primary. Steps 6-8 (worker,
+verifier, decision gate, final-alignment, ship) are out of scope here and
+covered by `claude-longtask-code` under the same boundary.
+
+See `skills/claude-longtask/SKILL.md` § "Codex role boundary" for the full
+rule including Step 6-8 categories.
+
 ## Owner four-step (subset)
 
 | Step | Owner | Scope (subset of /longtask) |
 |---|---|---|
 | **(a) Architecture** | Claude opus (main session + Agent tool) | Spec classification, plan writing, plan-integrity review. |
-| **(b) Discussion** | Cross-rounds roundtable (v0.4) | Spec-roundtable (Step 2, may be skipped when `pre_vetted`) + plan-roundtable (Step 4b, always runs). Each round = cross-pair (codex × lenses → codex mid-summary → claude × lenses → claude end-summary). Consensus editors: single Claude opus. Terminal gate: cross-rounds-final-review (opus 4.7 xhigh). |
+| **(b) Discussion** | Cross-rounds roundtable (v0.4) | Spec-roundtable (Step 2, may be skipped when `pre_vetted`) + plan-roundtable (Step 4b, always runs). Each round = cross-pair (codex × lenses → codex mid-summary → claude × lenses → claude end-summary). Consensus editors: single Claude opus. Terminal gate: cross-rounds-final-review (opus 4.7 xhigh). **Spec stage uses `required_lenses` (default cap ≤ 3 per REQ-003); plan stage uses `plan_required_lenses` — a pruned subset (default `engineering + ceo-product`, other lenses opt in per phase `file_scope` match per REQ-004).** |
 | (c) Work | — | Not in scope; deferred to `/longtaskCode`. |
 | (d) Final verification | — | Not in scope; deferred to `/longtaskCode`. |
 
@@ -184,6 +205,14 @@ If the source spec already carries v2 frontmatter (`source_spec_path`,
 plus per-phase block on a `plan_with_source` shape), the classifier marks
 `pre_vetted.is_pre_vetted: true` and Step 2 is skipped — but plan-roundtable
 (Step 4b) still runs at `cross_rounds` (default 1 for plan-shape inputs).
+
+**cross_rounds policy (REQ-007 — 2026-05-27 token-waste refactor):**
+default = 1; classifier auto-cap = 2 (medium-risk taxonomy); `cross_rounds: 3`
+is **user-forced via `spec.cross_rounds: 3` in spec frontmatter only** —
+the classifier never picks 3. The orchestrator rejects classifier JSON
+with `cross_rounds == 3` (defensive check). See
+`skills/claude-longtask/SKILL.md` § "Length policy" for the full tier
+table.
 
 ## Relationship to /longtask:manifest-bridge
 

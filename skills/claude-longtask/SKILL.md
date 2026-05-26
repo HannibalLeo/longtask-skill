@@ -72,12 +72,34 @@ late-stage criticism is the cheapest defense against bad phase decomposition.
 **Step 3 is also unconditional** — codex sanity audit always runs as the
 cross-model second opinion on the spec.
 
-**Subagent count per stage** = `2 × |required_lenses| × cross_rounds`
+**Lens count policy (REQ-003 / REQ-004 — 2026-05-27 refactor):**
+
+- Spec-stage `required_lenses` defaults to **≤ 3 lenses** (engineering +
+  one product/CEO lens + one domain lens). Lenses 4–5 are illegal unless
+  `risk_reasons[]` contains a matching cross-domain-risk item naming the
+  lens. Wide-net 5-lens classification is the cost-explosion path.
+- Plan-stage roundtable consumes a **pruned subset** —
+  `plan_required_lenses` defaults to `engineering` + `ceo-product`. Other
+  lenses (`ui-design`, `domain-expert`, `design`) opt in only when at
+  least one plan phase has `file_scope` matching that lens's domain
+  (`ui-design` → frontend/UI globs; `domain-expert` → domain-specific
+  paths; `design` → user-visible surface paths). Orchestrator persists
+  the resolved `plan_required_lenses` plus a one-line
+  `plan_lens_pruning_reason` to state for audit.
+
+**Subagent count per stage** = `2 × |lens_set_for_stage| × cross_rounds`
 (lens dispatches) `+ 2 × cross_rounds` (mid-summary + end-summary per round)
-`+ 2` (consensus-editor + cross-rounds-final-review). With the default 5
-lenses, this is `12 × cross_rounds + 2` per stage: cross_rounds=1/2/3 →
-14 / 26 / 38 dispatches per stage. Both stages combined (when spec runs) →
-28 / 52 / 76. Note the shape is sequenced *within* a round (Phase 1-4) but
+`+ 2` (consensus-editor + cross-rounds-final-review).
+
+- Default spec-stage shape (3 lenses): `8 × cross_rounds + 2` →
+  cross_rounds=1/2/3 → **10 / 18 / 26** dispatches.
+- Default plan-stage shape (2 lenses, pruned): `6 × cross_rounds + 2` →
+  cross_rounds=1/2/3 → **8 / 14 / 20** dispatches.
+- Worst case (spec=5 lenses + plan=4 lenses) is gated behind explicit
+  cross-domain risk justification; the classifier may not reach it on
+  ambiguous specs.
+
+The shape is sequenced *within* a round (Phase 1-4) but
 *parallel across lenses within each Phase*.
 
 ## Where details live (load-bearing — read before writing specs/plans)
@@ -328,6 +350,41 @@ codex exec children (one-shot, GPT-5.5)
 | **claude-worker** | spec + scoped files | YES (working tree only, file_scope) | NO | one-shot per round; output is worker-output.json |
 | **codex-verifier** | spec + working tree + verify_cmd output | NO | NO | one-shot per round; output is JSON |
 
+## Codex role boundary (load-bearing invariant — REQ-008, 2026-05-27 refactor)
+
+Codex sub-agents are limited to **two role categories** in the claude-flow
+(`claude-longtask`, `claude-longtask-plan`, `claude-longtask-code`):
+
+- **Discussion** — codex is invoked for cross-model second opinion only:
+  - spec-roundtable codex-phase lens (Step 2 Phase 1)
+  - plan-roundtable codex-phase lens (Step 4b Phase 1)
+  - codex mid-round summary (Step 2 Phase 2 / Step 4b Phase 2 — emits the
+    digest per REQ-005)
+  - codex spec sanity audit (Step 3 — unconditional second-opinion pass)
+- **Verification** — codex is invoked as schema-bound JSON judge only:
+  - phase verifier (Step 6 — `codex exec --output-schema`)
+  - plan-integrity secondary (Step 5 hybrid)
+  - decision-review secondary (Step 6 decision gate)
+  - final-alignment secondary (Step 8 mandatory-dual gate)
+
+**All authoring, editing, and worker roles stay on Claude.** The following
+roles MUST NOT be dispatched to codex:
+
+- spec classifier
+- spec consensus editor / plan consensus editor (single Claude opus authors)
+- plan writer
+- spec round-state editor / plan round-state editor (Claude end-round summary)
+- spec / plan cross-rounds final review (Claude opus 4.7 xhigh)
+- decision-review primary, plan-integrity primary, final-alignment primary
+- final E2E2 report (Claude Agent + gstack browse skill)
+- docs-sync (`update-docs`), ship (`/ship`)
+- Step 6 phase worker (moved to Claude in the 2026-05-26 refactor)
+
+Any new role that lands in this pipeline MUST classify cleanly into Discussion
+or Verification to be assigned to codex; otherwise it stays on Claude. The
+Role × Model matrix below has been audited against this rule (no codex row
+has an authoring or worker primary).
+
 ## Role × Model dispatch matrix (v0.4)
 
 | Role | Model | Dispatch | Step |
@@ -389,13 +446,15 @@ verdicts and the unresolved cross-phase disagreements explicitly.
 The previous `hybrid` / `dual` `roundtable_mode` knob is gone. Heterogeneity
 is built in — there is no longer a single-model degraded mode at all.
 
-**Length policy — `cross_rounds ∈ {1, 2, 3}`, three fixed tiers:**
+**Length policy — `cross_rounds ∈ {1, 2, 3}`, three tiers (REQ-007 —
+2026-05-27 refactor: default = 1, classifier auto-cap = 2, tier 3 is
+user-forced via spec frontmatter only):**
 
-| cross_rounds | When | Per-stage subagent count (5 lenses) |
-|---|---|---|
-| **1** | Low-risk unvetted `source_spec` / `hybrid`, OR pre-vetted inputs (`pre_vetted.is_pre_vetted == true` skips spec stage entirely; plan stage still runs at cross_rounds=1). Default minimum. | 14 |
-| **2** | Medium-risk: cross-module contract change / new external dependency / plan will have ≥4 phases / ambiguous scope. Cite reason in `risk_reasons`. | 26 |
-| **3** | High-risk: irreversible data migration / regulatory / clinical / patient-safety / security boundary / breaking external API contract / cross-module blast radius (>3 modules). Cite trigger in `risk_reasons`. | 38 |
+| cross_rounds | Source | When | Per-stage subagent count (5 lenses) |
+|---|---|---|---|
+| **1** | classifier default | Low-risk unvetted `source_spec` / `hybrid`, OR pre-vetted inputs (`pre_vetted.is_pre_vetted == true` skips spec stage entirely; plan stage still runs at cross_rounds=1). Default minimum. | 14 |
+| **2** | classifier auto-cap = 2 | Medium-risk: cross-module contract change / new external dependency / plan will have ≥4 phases / ambiguous scope. Cite reason in `risk_reasons`. The classifier may also use 2 with a high-risk trigger cited (escalation to 3 is the user's call, not the classifier's). | 26 |
+| **3** | **user-forced via `spec.cross_rounds: 3` in frontmatter only** — classifier NEVER emits 3 | High-risk that the user has explicitly elected to spend round-3 budget on: irreversible data migration / regulatory / clinical / patient-safety / security boundary / breaking external API / cross-module blast radius (>3 modules). | 38 |
 
 - **plan-roundtable is non-skippable.** Even when `pre_vetted == true` (spec
   stage skipped), plan stage runs at the chosen `cross_rounds` because the
@@ -416,10 +475,15 @@ is built in — there is no longer a single-model degraded mode at all.
 ```
 spec.cross_rounds (frontmatter)  >  classifier.cross_rounds  >  classifier default (1)
 ```
-The classifier is empowered to escalate based on `risk_reasons`. The user
-can only override DOWNWARD via frontmatter (e.g., "I know better, run only
-1 round even though classifier said 3") — escalation upward by user
-frontmatter is honored but discouraged (let the classifier do its job).
+The classifier is empowered to escalate based on `risk_reasons` up to the
+auto-cap of `cross_rounds: 2`. **Classifier MUST NOT emit `cross_rounds: 3`
+on its own**; if a high-risk trigger fires, the classifier still emits
+`cross_rounds: 2` with the trigger cited in `risk_reasons` and the user
+decides whether to override upward via `spec.cross_rounds: 3` in
+frontmatter. The orchestrator rejects any classifier JSON with
+`cross_rounds == 3` and re-classifies. User-side downward overrides via
+frontmatter (e.g., "I know better, run only 1 round even though classifier
+said 2") are honoured.
 
 ## Hybrid judgment gates — reconciliation (decision #6)
 

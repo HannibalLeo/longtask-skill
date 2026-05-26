@@ -1,0 +1,29 @@
+{
+  "case_id": "plan-integrity-agent-skill-screenshot",
+  "description": "Phase body containing Agent/Skill tool use and screenshot work is rejected.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_AGENT_TOOL_USE_IN_PHASE",
+      "VIOLATION_SCREENSHOT_WORK_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P4"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_AGENT_TOOL_USE_IN_PHASE",
+      "VIOLATION_SCREENSHOT_WORK_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P4"
+    ]
+  }
+}

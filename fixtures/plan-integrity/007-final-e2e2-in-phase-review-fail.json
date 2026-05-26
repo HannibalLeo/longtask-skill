@@ -1,0 +1,27 @@
+{
+  "case_id": "plan-integrity-final-e2e2-in-phase",
+  "description": "Final E2E2 embedded in a phase body is rejected.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_FINAL_E2E2_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P7"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_FINAL_E2E2_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P7"
+    ]
+  }
+}

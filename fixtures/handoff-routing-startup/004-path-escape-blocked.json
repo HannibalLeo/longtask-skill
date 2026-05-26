@@ -1,0 +1,17 @@
+{
+  "case_id": "handoff-routing-startup-path-escape-blocked",
+  "description": "Manifest path escape is rejected.",
+  "case_type": "contract_case",
+  "routing_decision": "fast_allowed",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_PATH_ESCAPE"
+  },
+  "expected": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_PATH_ESCAPE"
+  }
+}

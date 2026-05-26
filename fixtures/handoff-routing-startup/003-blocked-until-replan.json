@@ -1,0 +1,19 @@
+{
+  "case_id": "handoff-routing-startup-blocked-until-replan",
+  "description": "blocked_until_replan cannot run Codex execution.",
+  "case_type": "contract_case",
+  "routing_decision": "blocked_until_replan",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "blocked_until_replan",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_INCOMPATIBLE_ROUTING",
+    "recommended_executor": "claude-longtask-plan"
+  },
+  "expected": {
+    "routing_decision": "blocked_until_replan",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_INCOMPATIBLE_ROUTING",
+    "recommended_executor": "claude-longtask-plan"
+  }
+}

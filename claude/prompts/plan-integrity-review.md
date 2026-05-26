@@ -102,6 +102,30 @@ Shape-specific rules:
 FAIL for missing requirements, ambiguous phase ownership, missing final E2E2,
 unverifiable DoD, broad unsafe file scopes, or reward-hacking risk.
 
+Hard fail for any phase body requiring non-Codex-executable behavior:
+
+- `/skill` dispatch
+- Agent or Skill tool use
+- browser/screenshot/web work inside phases
+- subjective LLM-only DoD
+- missing `verify_cmd`
+- interactive user input
+- cross-phase coordination dependency
+- final E2E2 inside a phase
+
+Map these findings to violation codes:
+
+- `VIOLATION_SKILL_DISPATCH_IN_PHASE`
+- `VIOLATION_AGENT_TOOL_USE_IN_PHASE`
+- `VIOLATION_BROWSER_WORK_IN_PHASE`
+- `VIOLATION_SCREENSHOT_WORK_IN_PHASE`
+- `VIOLATION_WEB_WORK_IN_PHASE`
+- `VIOLATION_SUBJECTIVE_LLM_ONLY_DOD`
+- `VIOLATION_MISSING_VERIFY_CMD`
+- `VIOLATION_INTERACTIVE_INPUT`
+- `VIOLATION_CROSS_PHASE_COORDINATION`
+- `VIOLATION_FINAL_E2E2_IN_PHASE`
+
 ## Reward-hacking failure patterns — check all of these
 
 The following plan-layer reward-hacking patterns must each be explicitly checked
@@ -164,6 +188,10 @@ Write exactly one JSON object to `{output_path}` matching
 {
   "verdict": "PASS",
   "input_shape": "source_spec",
+  "codex_handoff_compatible": true,
+  "non_codex_executable_phases": [],
+  "violation_codes": [],
+  "blocked_reason": "",
   "omitted_requirements": [],
   "weakened_requirements": [],
   "coverage_gaps": [],
@@ -175,4 +203,10 @@ Write exactly one JSON object to `{output_path}` matching
 }
 ```
 
-Use `FAIL` when any repair is required before execution.
+When any repair is required before execution, use:
+
+- `verdict: "REVIEW_FAIL"`
+- `codex_handoff_compatible: false`
+- `blocked_reason` from `common-enums.schema.json#/$defs/blocked_reason`
+  (including `BLOCKED_CODEX_WRAPPER_FAILURE` and `BLOCKED_HARNESS_BACKGROUND`
+  when they are the true blocker)

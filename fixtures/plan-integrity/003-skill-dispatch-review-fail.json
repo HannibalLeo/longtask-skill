@@ -1,0 +1,27 @@
+{
+  "case_id": "plan-integrity-skill-dispatch",
+  "description": "Phase body contains /skill dispatch.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_SKILL_DISPATCH_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P4"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_SKILL_DISPATCH_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P4"
+    ]
+  }
+}

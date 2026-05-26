@@ -1,10 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Plan Integrity Review",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "verdict",
     "input_shape",
+    "codex_handoff_compatible",
+    "non_codex_executable_phases",
+    "violation_codes",
+    "blocked_reason",
     "omitted_requirements",
     "weakened_requirements",
     "coverage_gaps",
@@ -29,6 +34,35 @@
         "plan_with_source"
       ]
     },
+    "codex_handoff_compatible": {
+      "type": "boolean"
+    },
+    "non_codex_executable_phases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^P[0-9]+$"
+      }
+    },
+    "violation_codes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/plan_integrity_violation_code"
+      }
+    },
+    "blocked_reason": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            ""
+          ]
+        },
+        {
+          "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+        }
+      ]
+    },
     "omitted_requirements": {
       "type": "array",
       "items": { "type": "string" }
@@ -51,7 +85,32 @@
     },
     "reward_hacking_signals": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "pattern",
+              "file",
+              "line",
+              "excerpt"
+            ],
+            "properties": {
+              "pattern": { "type": "string" },
+              "file": { "type": "string" },
+              "line": { "type": "integer", "minimum": 1 },
+              "excerpt": { "type": "string" },
+              "source_reference": { "type": "string" },
+              "missing_literals": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        ]
+      }
     },
     "required_repairs": {
       "type": "array",
@@ -61,6 +120,81 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "codex_handoff_compatible": {
+            "const": true
+          },
+          "blocked_reason": {
+            "const": ""
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "violation_codes": {
+            "maxItems": 0
+          },
+          "required_repairs": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "REVIEW_FAIL"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blocked_reason": {
+            "not": {
+              "const": ""
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "plan_integrity_violation_code": {
+      "type": "string",
+      "enum": [
+        "VIOLATION_SKILL_DISPATCH_IN_PHASE",
+        "VIOLATION_AGENT_TOOL_USE_IN_PHASE",
+        "VIOLATION_BROWSER_WORK_IN_PHASE",
+        "VIOLATION_SCREENSHOT_WORK_IN_PHASE",
+        "VIOLATION_WEB_WORK_IN_PHASE",
+        "VIOLATION_SUBJECTIVE_LLM_ONLY_DOD",
+        "VIOLATION_MISSING_VERIFY_CMD",
+        "VIOLATION_INTERACTIVE_INPUT",
+        "VIOLATION_CROSS_PHASE_COORDINATION",
+        "VIOLATION_FINAL_E2E2_IN_PHASE"
+      ]
     }
   }
 }

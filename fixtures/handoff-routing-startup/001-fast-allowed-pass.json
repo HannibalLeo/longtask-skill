@@ -1,0 +1,19 @@
+{
+  "case_id": "handoff-routing-startup-fast-allowed-pass",
+  "description": "Valid fast path handoff starts Codex Step 6.",
+  "case_type": "contract_case",
+  "routing_decision": "fast_allowed",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "PASS",
+    "recommended_executor": "codex-longtask-code",
+    "blocked_reason": ""
+  },
+  "expected": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "PASS",
+    "recommended_executor": "codex-longtask-code",
+    "blocked_reason": ""
+  }
+}

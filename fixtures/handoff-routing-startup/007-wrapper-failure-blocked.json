@@ -1,0 +1,17 @@
+{
+  "case_id": "handoff-routing-startup-wrapper-failure",
+  "description": "Wrapper startup failure propagates dedicated blocked enum.",
+  "case_type": "contract_case",
+  "routing_decision": "fast_allowed",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_CODEX_WRAPPER_FAILURE"
+  },
+  "expected": {
+    "routing_decision": "fast_allowed",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_CODEX_WRAPPER_FAILURE"
+  }
+}

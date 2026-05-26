@@ -1,0 +1,29 @@
+{
+  "case_id": "plan-integrity-interactive-crossphase",
+  "description": "Interactive input and cross-phase coordination dependency are rejected.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_INTERACTIVE_INPUT",
+      "VIOLATION_CROSS_PHASE_COORDINATION"
+    ],
+    "non_codex_executable_phases": [
+      "P6"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_INTERACTIVE_INPUT",
+      "VIOLATION_CROSS_PHASE_COORDINATION"
+    ],
+    "non_codex_executable_phases": [
+      "P6"
+    ]
+  }
+}

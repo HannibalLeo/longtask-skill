@@ -1,0 +1,17 @@
+{
+  "case_id": "handoff-routing-startup-invalid-override",
+  "description": "override_record is invalid when routing decision is not safe_recommended.",
+  "case_type": "contract_case",
+  "routing_decision": "safe_required",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "safe_required",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_MANIFEST_INCOMPATIBLE"
+  },
+  "expected": {
+    "routing_decision": "safe_required",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_MANIFEST_INCOMPATIBLE"
+  }
+}

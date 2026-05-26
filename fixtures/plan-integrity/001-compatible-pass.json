@@ -1,0 +1,17 @@
+{
+  "case_id": "plan-integrity-compatible-pass",
+  "description": "Codex-executable plan passes integrity gate.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "PASS",
+    "codex_handoff_compatible": true,
+    "blocked_reason": "",
+    "violation_codes": []
+  },
+  "expected": {
+    "verdict": "PASS",
+    "codex_handoff_compatible": true,
+    "blocked_reason": "",
+    "violation_codes": []
+  }
+}

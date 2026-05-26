@@ -1,0 +1,27 @@
+{
+  "case_id": "plan-integrity-missing-verify-cmd",
+  "description": "Phase without verify_cmd is non-Codex-executable.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_MISSING_VERIFY_CMD"
+    ],
+    "non_codex_executable_phases": [
+      "P3"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_MISSING_VERIFY_CMD"
+    ],
+    "non_codex_executable_phases": [
+      "P3"
+    ]
+  }
+}

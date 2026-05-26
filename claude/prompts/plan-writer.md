@@ -150,7 +150,17 @@ fills in placeholder text to "make it complete".
    - `verify_passes_when`
    - `max_retry_rounds`
    - `dod`
-6. Add final verification frontmatter:
+6. Phase body must remain Codex-executable. Reject and block plan output when
+   any phase body requires:
+   - `/skill` dispatch
+   - `Agent` or `Skill` tool use
+   - browser/screenshot/web work inside the phase body
+   - subjective LLM-only DoD
+   - missing `verify_cmd`
+   - interactive input
+   - cross-phase coordination dependency
+   - final E2E2 execution inside a phase
+7. Add final verification frontmatter:
    - `source_spec_path`
    - `source_spec_sha256`
    - `enhanced_spec_path`
@@ -158,9 +168,18 @@ fills in placeholder text to "make it complete".
    - `final_verify_cmd`
    - `final_e2e2_cmd`
    - `final_report_path`
-7. The final E2E2 command must produce or support screenshots. If no credible
+8. The final E2E2 command must produce or support screenshots. If no credible
    E2E2 screenshot path exists, stop with `BLOCKED_SPEC_REWRITE` and explain
    the missing prerequisite instead of weakening the gate.
+9. Include a handoff compatibility section proving whether this plan is Codex
+   executable using:
+   - `codex_handoff_compatible`
+   - `non_codex_executable_phases[]`
+   - `violation_codes[]`
+   - `required_repairs[]`
+   - `blocked_reason` (empty for compatible plan, blocked enum for incompatible)
+   The default expectation is `codex_handoff_compatible: true`. If false,
+   include only concrete blockers and repairs.
 
 The output document at `{output_path}` is both:
 
@@ -202,6 +221,18 @@ final_report_path: ".longtask/reports/<spec>/final-report.md"
 - Final report path: `.longtask/reports/<spec>/final-report.md`
 - Report must align source/input requirements, enhanced spec changes,
   implementation plan phases, test evidence, and screenshot contents.
+
+## Codex Handoff Compatibility
+
+```json
+{
+  "codex_handoff_compatible": true,
+  "non_codex_executable_phases": [],
+  "violation_codes": [],
+  "required_repairs": [],
+  "blocked_reason": ""
+}
+```
 
 ## P1 - Short Phase Name
 

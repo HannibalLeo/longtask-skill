@@ -21,11 +21,31 @@
     },
     "handoff-routing-startup": {
       "description": "Owned by P3+.",
-      "cases": []
+      "cases": [
+        "fixtures/handoff-routing-startup/001-fast-allowed-pass.json",
+        "fixtures/handoff-routing-startup/002-safe-required-blocked.json",
+        "fixtures/handoff-routing-startup/003-blocked-until-replan.json",
+        "fixtures/handoff-routing-startup/004-path-escape-blocked.json",
+        "fixtures/handoff-routing-startup/005-git-base-mismatch-blocked.json",
+        "fixtures/handoff-routing-startup/006-missing-artifact-blocked.json",
+        "fixtures/handoff-routing-startup/007-wrapper-failure-blocked.json",
+        "fixtures/handoff-routing-startup/008-harness-background-blocked.json",
+        "fixtures/handoff-routing-startup/009-contradictory-routing-next-blocked.json",
+        "fixtures/handoff-routing-startup/010-invalid-override-blocked.json"
+      ]
     },
     "plan-integrity": {
       "description": "Owned by P3+.",
-      "cases": []
+      "cases": [
+        "fixtures/plan-integrity/001-compatible-pass.json",
+        "fixtures/plan-integrity/002-missing-verify-cmd-review-fail.json",
+        "fixtures/plan-integrity/003-skill-dispatch-review-fail.json",
+        "fixtures/plan-integrity/004-browser-web-in-phase-review-fail.json",
+        "fixtures/plan-integrity/005-subjective-dod-review-fail.json",
+        "fixtures/plan-integrity/006-interactive-crossphase-review-fail.json",
+        "fixtures/plan-integrity/007-final-e2e2-in-phase-review-fail.json",
+        "fixtures/plan-integrity/008-agent-skill-screenshot-review-fail.json"
+      ]
     },
     "codex-exit": {
       "description": "Owned by P4+.",

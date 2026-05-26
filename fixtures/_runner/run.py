@@ -150,11 +150,41 @@ def _run_case_allowed_doc_migration(case: dict[str, Any]) -> tuple[bool, dict[st
     return actual_allowed == expected_allowed, details
 
 
+def _compare_expected_fields(actual: Any, expected: Any, path: str = "root") -> list[str]:
+    mismatches: list[str] = []
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return [f"{path}: expected object, got {type(actual).__name__}"]
+        for key, expected_value in expected.items():
+            if key not in actual:
+                mismatches.append(f"{path}.{key}: missing key")
+                continue
+            mismatches.extend(_compare_expected_fields(actual[key], expected_value, f"{path}.{key}"))
+        return mismatches
+    if isinstance(expected, list):
+        if actual != expected:
+            mismatches.append(f"{path}: expected {expected!r}, got {actual!r}")
+        return mismatches
+    if actual != expected:
+        mismatches.append(f"{path}: expected {expected!r}, got {actual!r}")
+    return mismatches
+
+
+def _run_case_contract_case(case: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    actual = case.get("actual")
+    expected = case.get("expected")
+    if expected is None:
+        return False, {"error": "missing_expected"}
+    mismatches = _compare_expected_fields(actual, expected)
+    return not mismatches, {"actual": actual, "expected": expected, "mismatches": mismatches}
+
+
 CASE_DISPATCH = {
     "schema_parse": _run_case_schema_parse,
     "ref_resolution": _run_case_ref_resolution,
     "duplicate_active_schema_rejection": _run_case_duplicate_rejection,
     "allowed_doc_migration_references": _run_case_allowed_doc_migration,
+    "contract_case": _run_case_contract_case,
 }
 
 

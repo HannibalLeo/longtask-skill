@@ -1,0 +1,27 @@
+{
+  "case_id": "plan-integrity-subjective-dod",
+  "description": "Subjective LLM-only DoD is rejected.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_SUBJECTIVE_LLM_ONLY_DOD"
+    ],
+    "non_codex_executable_phases": [
+      "P2"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_SUBJECTIVE_LLM_ONLY_DOD"
+    ],
+    "non_codex_executable_phases": [
+      "P2"
+    ]
+  }
+}

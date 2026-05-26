@@ -1,0 +1,29 @@
+{
+  "case_id": "plan-integrity-browser-web-in-phase",
+  "description": "Phase body requires browser/web work before final E2E2.",
+  "case_type": "contract_case",
+  "actual": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_BROWSER_WORK_IN_PHASE",
+      "VIOLATION_WEB_WORK_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P5"
+    ]
+  },
+  "expected": {
+    "verdict": "REVIEW_FAIL",
+    "codex_handoff_compatible": false,
+    "blocked_reason": "BLOCKED_PLAN_INTEGRITY",
+    "violation_codes": [
+      "VIOLATION_BROWSER_WORK_IN_PHASE",
+      "VIOLATION_WEB_WORK_IN_PHASE"
+    ],
+    "non_codex_executable_phases": [
+      "P5"
+    ]
+  }
+}

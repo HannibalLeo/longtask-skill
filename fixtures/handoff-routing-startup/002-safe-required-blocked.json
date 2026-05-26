@@ -1,0 +1,19 @@
+{
+  "case_id": "handoff-routing-startup-safe-required-blocked",
+  "description": "safe_required cannot route into Codex Step 6.",
+  "case_type": "contract_case",
+  "routing_decision": "safe_required",
+  "codex_handoff_compatible": true,
+  "actual": {
+    "routing_decision": "safe_required",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_INCOMPATIBLE_ROUTING",
+    "recommended_executor": "claude-longtask-code"
+  },
+  "expected": {
+    "routing_decision": "safe_required",
+    "startup_status": "BLOCKED",
+    "blocked_reason": "BLOCKED_INCOMPATIBLE_ROUTING",
+    "recommended_executor": "claude-longtask-code"
+  }
+}

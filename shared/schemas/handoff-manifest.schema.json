@@ -8,14 +8,19 @@
     "manifest_version",
     "from_skill",
     "produced_at",
+    "longtask_version",
     "session_id",
+    "identity",
+    "source_lineage",
+    "implementation_plan",
     "workflow_routing",
     "codex_handoff_compatible",
+    "codex_handoff_compatibility_proof",
+    "repo_path_safety",
+    "artifacts",
     "recommended_executor",
     "next_step_hint",
-    "final_verify_cmd",
-    "final_e2e2_cmd",
-    "final_report_path"
+    "next_commands"
   ],
   "properties": {
     "manifest_version": {
@@ -28,10 +33,25 @@
       ]
     },
     "produced_at": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
+    },
+    "longtask_version": {
+      "type": "string",
+      "minLength": 1
     },
     "session_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "source_lineage": {
+      "$ref": "#/$defs/source_lineage"
+    },
+    "implementation_plan": {
+      "$ref": "#/$defs/implementation_plan"
     },
     "workflow_routing": {
       "type": "object",
@@ -76,6 +96,7 @@
         "no_skill_dispatch_in_phase_body",
         "no_browser_ops_outside_final_e2e2",
         "no_mid_phase_claude_required",
+        "checked_by",
         "checked_plan_sha256",
         "plan_integrity_review_path",
         "non_codex_executable_phases",
@@ -95,12 +116,19 @@
         "no_mid_phase_claude_required": {
           "type": "boolean"
         },
+        "checked_by": {
+          "type": "string",
+          "enum": [
+            "plan-integrity-review"
+          ]
+        },
         "checked_plan_sha256": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
         },
         "plan_integrity_review_path": {
-          "type": "string"
+          "type": "string",
+          "$ref": "#/$defs/repo_relative_path"
         },
         "non_codex_executable_phases": {
           "type": "array",
@@ -112,7 +140,7 @@
         "violation_codes": {
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/plan_integrity_violation_code"
           }
         },
         "required_repairs": {
@@ -133,7 +161,20 @@
       ]
     },
     "next_step_hint": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
+    },
+    "repo_path_safety": {
+      "$ref": "#/$defs/repo_path_safety"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    },
+    "next_commands": {
+      "$ref": "#/$defs/next_commands"
+    },
+    "override_record": {
+      "$ref": "#/$defs/override_record"
     },
     "blocked_reason": {
       "$ref": "common-enums.schema.json#/$defs/blocked_reason"
@@ -145,10 +186,300 @@
       "type": "string"
     },
     "final_report_path": {
+      "$ref": "#/$defs/repo_relative_path"
+    },
+    "risk_tier": {
       "type": "string"
+    },
+    "execution_mode_hint": {
+      "type": "string"
+    },
+    "claude_review_required": {
+      "type": "boolean"
+    },
+    "spec_frontmatter_passthrough": {
+      "type": "object"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "workflow_routing": {
+            "properties": {
+              "routing_decision": {
+                "const": "fast_allowed"
+              }
+            },
+            "required": [
+              "routing_decision"
+            ]
+          }
+        },
+        "required": [
+          "workflow_routing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "recommended_executor": {
+            "const": "codex-longtask-code"
+          },
+          "codex_handoff_compatible": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow_routing": {
+            "properties": {
+              "routing_decision": {
+                "const": "safe_recommended"
+              }
+            },
+            "required": [
+              "routing_decision"
+            ]
+          }
+        },
+        "required": [
+          "workflow_routing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "recommended_executor": {
+            "enum": [
+              "claude-longtask-code",
+              "claude-longtask"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow_routing": {
+            "properties": {
+              "routing_decision": {
+                "const": "safe_required"
+              }
+            },
+            "required": [
+              "routing_decision"
+            ]
+          }
+        },
+        "required": [
+          "workflow_routing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "recommended_executor": {
+            "enum": [
+              "claude-longtask-code",
+              "claude-longtask"
+            ]
+          }
+        },
+        "not": {
+          "required": [
+            "override_record"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "workflow_routing": {
+            "properties": {
+              "routing_decision": {
+                "const": "blocked_until_replan"
+              }
+            },
+            "required": [
+              "routing_decision"
+            ]
+          }
+        },
+        "required": [
+          "workflow_routing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "recommended_executor": {
+            "const": "claude-longtask-plan"
+          }
+        },
+        "not": {
+          "required": [
+            "override_record"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "override_record"
+        ]
+      },
+      "then": {
+        "properties": {
+          "workflow_routing": {
+            "properties": {
+              "routing_decision": {
+                "const": "safe_recommended"
+              }
+            },
+            "required": [
+              "routing_decision"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "codex_handoff_compatible": {
+            "const": false
+          }
+        },
+        "required": [
+          "codex_handoff_compatible"
+        ]
+      },
+      "then": {
+        "properties": {
+          "recommended_executor": {
+            "enum": [
+              "claude-longtask-code",
+              "claude-longtask",
+              "claude-longtask-plan"
+            ]
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "repo_relative_path": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(^|/)\\.\\.(?:/|$)).+"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_version",
+        "from_skill",
+        "produced_at",
+        "longtask_version",
+        "session_id"
+      ],
+      "properties": {
+        "manifest_version": {
+          "type": "string"
+        },
+        "from_skill": {
+          "type": "string",
+          "enum": [
+            "claude-longtask-plan"
+          ]
+        },
+        "produced_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "longtask_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "source_lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_spec_path",
+        "source_spec_sha256"
+      ],
+      "properties": {
+        "source_spec_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_spec_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "enhanced_spec_path": {
+          "type": "string"
+        },
+        "enhanced_spec_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "implementation_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_shape",
+        "implementation_plan_path",
+        "implementation_plan_sha256",
+        "plan_integrity_review_path",
+        "alignment_matrix_path",
+        "state_path"
+      ],
+      "properties": {
+        "input_shape": {
+          "type": "string",
+          "enum": [
+            "source_spec",
+            "hybrid",
+            "self_contained_plan",
+            "plan_with_source"
+          ]
+        },
+        "implementation_plan_path": {
+          "$ref": "#/$defs/repo_relative_path"
+        },
+        "implementation_plan_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "plan_integrity_review_path": {
+          "$ref": "#/$defs/repo_relative_path"
+        },
+        "alignment_matrix_path": {
+          "$ref": "#/$defs/repo_relative_path"
+        },
+        "state_path": {
+          "$ref": "#/$defs/repo_relative_path"
+        },
+        "repo_head_sha_at_plan": {
+          "$ref": "#/$defs/sha256"
+        },
+        "base_sha_before_phases_expected": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
     "routing_reason_code": {
       "type": "string",
       "enum": [
@@ -166,6 +497,168 @@
         "runtime_discovery_unknown",
         "plan_repair_required"
       ]
+    },
+    "plan_integrity_violation_code": {
+      "type": "string",
+      "enum": [
+        "VIOLATION_SKILL_DISPATCH_IN_PHASE",
+        "VIOLATION_AGENT_TOOL_USE_IN_PHASE",
+        "VIOLATION_BROWSER_WORK_IN_PHASE",
+        "VIOLATION_SCREENSHOT_WORK_IN_PHASE",
+        "VIOLATION_WEB_WORK_IN_PHASE",
+        "VIOLATION_SUBJECTIVE_LLM_ONLY_DOD",
+        "VIOLATION_MISSING_VERIFY_CMD",
+        "VIOLATION_INTERACTIVE_INPUT",
+        "VIOLATION_CROSS_PHASE_COORDINATION",
+        "VIOLATION_FINAL_E2E2_IN_PHASE"
+      ]
+    },
+    "repo_path_safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo_root",
+        "allowed_write_roots",
+        "path_escape_rejected",
+        "repo_head_sha_at_plan",
+        "base_sha_before_phases_expected"
+      ],
+      "properties": {
+        "repo_root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowed_write_roots": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/repo_relative_path"
+          }
+        },
+        "temp_roots_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "path_escape_rejected": {
+          "type": "boolean",
+          "const": true
+        },
+        "repo_remote": {
+          "type": "string"
+        },
+        "repo_head_sha_at_plan": {
+          "$ref": "#/$defs/sha256"
+        },
+        "base_sha_before_phases_expected": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "final_verify_cmd",
+        "final_e2e2_cmd",
+        "final_report_path"
+      ],
+      "properties": {
+        "final_verify_cmd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "final_e2e2_cmd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "final_report_path": {
+          "$ref": "#/$defs/repo_relative_path"
+        }
+      }
+    },
+    "next_commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "next_command",
+        "safe_path_recovery_command",
+        "plan_repair_command",
+        "review_retry_command",
+        "human_override_instructions"
+      ],
+      "properties": {
+        "next_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resume_default_command": {
+          "type": "string"
+        },
+        "safe_path_recovery_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan_repair_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "review_retry_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "human_override_instructions": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "override_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor",
+        "original_routing_decision",
+        "reason",
+        "timestamp",
+        "affected_phase_ids",
+        "preserved_blocking_checks"
+      ],
+      "properties": {
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "original_routing_decision": {
+          "type": "string",
+          "const": "safe_recommended"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "affected_phase_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          }
+        },
+        "preserved_blocking_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+          }
+        }
+      }
     }
   }
 }

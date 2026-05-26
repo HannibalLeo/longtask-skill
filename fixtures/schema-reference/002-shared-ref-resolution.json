@@ -1,0 +1,10 @@
+{
+  "case_id": "schema-reference-shared-ref-resolution",
+  "case_type": "ref_resolution",
+  "schema_paths": [
+    "shared/schemas/handoff-manifest.schema.json",
+    "shared/schemas/codex-code-exit-state.schema.json",
+    "shared/schemas/review-stage-result.schema.json"
+  ],
+  "description": "All file $ref targets resolve and stay under shared/schemas."
+}

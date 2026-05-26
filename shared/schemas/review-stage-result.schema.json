@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Review Stage Result",
+  "description": "Bounded result contract for one claude-longtask-review stage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stage_id",
+    "stage_status",
+    "artifact_paths",
+    "requirements_checked",
+    "reason"
+  ],
+  "properties": {
+    "stage_id": {
+      "type": "string",
+      "pattern": "^R([1-9]|1[0-3])$"
+    },
+    "stage_status": {
+      "$ref": "common-enums.schema.json#/$defs/review_stage_status"
+    },
+    "artifact_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requirements_checked": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "failed_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reason": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "anyOf": [
+        {
+          "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

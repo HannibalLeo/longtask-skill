@@ -1,0 +1,6 @@
+{
+  "case_id": "schema-reference-parse-shared",
+  "case_type": "schema_parse",
+  "schema_glob": "shared/schemas/*.json",
+  "description": "All authoritative shared schemas parse as valid JSON documents."
+}

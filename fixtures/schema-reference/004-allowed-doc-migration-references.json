@@ -1,0 +1,17 @@
+{
+  "case_id": "schema-reference-allowed-doc-migration-references",
+  "case_type": "allowed_doc_migration_references",
+  "sample_paths": [
+    "docs/archive/schema-examples/final-evidence-classification.schema.json",
+    "openspec/changes/archive/schema-handoff.schema.json",
+    "fixtures/schema-reference/001-shared-schema-parse.json",
+    "migrations/20260526/add-review-stage-result.schema.json",
+    "skills/codex-longtask/embedded.schema.json"
+  ],
+  "expected_allowed": [
+    "docs/archive/schema-examples/final-evidence-classification.schema.json",
+    "migrations/20260526/add-review-stage-result.schema.json",
+    "openspec/changes/archive/schema-handoff.schema.json"
+  ],
+  "description": "Doc/migration references are allowed as non-executable references."
+}

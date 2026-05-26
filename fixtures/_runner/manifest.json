@@ -1,0 +1,51 @@
+{
+  "canonical_groups": [
+    "schema-reference",
+    "handoff-routing-startup",
+    "plan-integrity",
+    "codex-exit",
+    "review-precondition-and-evidence",
+    "install-temp-home-safety",
+    "wrapper-matrix",
+    "final-evidence-classification"
+  ],
+  "groups": {
+    "schema-reference": {
+      "description": "Shared schema authority and reference policy checks.",
+      "cases": [
+        "fixtures/schema-reference/001-shared-schema-parse.json",
+        "fixtures/schema-reference/002-shared-ref-resolution.json",
+        "fixtures/schema-reference/003-duplicate-active-schema-rejection.json",
+        "fixtures/schema-reference/004-allowed-doc-migration-references.json"
+      ]
+    },
+    "handoff-routing-startup": {
+      "description": "Owned by P3+.",
+      "cases": []
+    },
+    "plan-integrity": {
+      "description": "Owned by P3+.",
+      "cases": []
+    },
+    "codex-exit": {
+      "description": "Owned by P4+.",
+      "cases": []
+    },
+    "review-precondition-and-evidence": {
+      "description": "Owned by P6+.",
+      "cases": []
+    },
+    "install-temp-home-safety": {
+      "description": "Owned by P7+.",
+      "cases": []
+    },
+    "wrapper-matrix": {
+      "description": "Owned by P5+.",
+      "cases": []
+    },
+    "final-evidence-classification": {
+      "description": "Owned by P8.",
+      "cases": []
+    }
+  }
+}

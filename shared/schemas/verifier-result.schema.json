@@ -14,7 +14,8 @@
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["PASS", "FAIL"]
+      "enum": ["PASS", "REVIEW_FAIL"],
+      "description": "Authoritative verdict enum; generic FAIL is normalized to REVIEW_FAIL."
     },
     "summary": {
       "type": "string"

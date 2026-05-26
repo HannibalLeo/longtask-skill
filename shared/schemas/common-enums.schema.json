@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shared Enum Authority",
+  "description": "Canonical closed enums for longtask dual-harness v0.3.0 contracts.",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "final_status": {
+      "type": "string",
+      "description": "Final status values are closed and FAIL is not allowed.",
+      "enum": [
+        "ALL_PASS",
+        "PARTIAL_PASS",
+        "REVIEW_FAIL"
+      ]
+    },
+    "blocked_reason": {
+      "type": "string",
+      "description": "Finalized blocked enum set.",
+      "enum": [
+        "BLOCKED_MANIFEST_SCHEMA_INVALID",
+        "BLOCKED_MANIFEST_INCOMPATIBLE",
+        "BLOCKED_INCOMPATIBLE_ROUTING",
+        "BLOCKED_SPEC_DRIFT",
+        "BLOCKED_PATH_ESCAPE",
+        "BLOCKED_MISSING_ARTIFACT",
+        "BLOCKED_GIT_BASE_MISMATCH",
+        "BLOCKED_PLAN_INTEGRITY",
+        "BLOCKED_SCOPE_VIOLATION",
+        "BLOCKED_VERIFIER_SCHEMA_INVALID",
+        "BLOCKED_COMMIT_CHAIN_INVALID",
+        "BLOCKED_REVIEW_PRECONDITION",
+        "BLOCKED_EVIDENCE_OVERCLAIM",
+        "BLOCKED_RUNTIME_MUTATION",
+        "BLOCKED_CODEX_WRAPPER_FAILURE",
+        "BLOCKED_HARNESS_BACKGROUND"
+      ]
+    },
+    "review_stage_status": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "REVIEW_FAIL",
+        "SKIPPED_NOT_APPLICABLE"
+      ]
+    }
+  }
+}

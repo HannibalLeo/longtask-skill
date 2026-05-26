@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Code Exit State",
+  "description": "Exit-state contract for codex-longtask-code Step 6 execution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "writer_skill",
+    "completed_at",
+    "session_id",
+    "handoff_manifest_path",
+    "handoff_manifest_sha256",
+    "overall_status",
+    "phase_results",
+    "base_sha_before_phases",
+    "head_sha_after_phases",
+    "phase_commit_chain",
+    "preserved_phase_commits",
+    "resume_default_command",
+    "safe_path_recovery_command",
+    "review_handoff_hint"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string"
+    },
+    "writer_skill": {
+      "type": "string",
+      "enum": [
+        "codex-longtask-code"
+      ]
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "handoff_manifest_path": {
+      "type": "string"
+    },
+    "handoff_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "overall_status": {
+      "$ref": "common-enums.schema.json#/$defs/final_status"
+    },
+    "first_blocked_phase": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^P[0-9]+$"
+    },
+    "blocked_reason": {
+      "anyOf": [
+        {
+          "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "phase_results": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/phase_result"
+      }
+    },
+    "decision_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision_record"
+      }
+    },
+    "model_requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/model_request"
+      }
+    },
+    "wrapper_mode_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "base_sha_before_phases": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "head_sha_after_phases": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "phase_commit_chain": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/phase_commit"
+      }
+    },
+    "preserved_phase_commits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/phase_commit"
+      }
+    },
+    "resume_default_command": {
+      "type": "string"
+    },
+    "safe_path_recovery_command": {
+      "type": "string"
+    },
+    "plan_repair_command": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_retry_command": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "human_override_instructions": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_handoff_hint": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "phase_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase_status",
+        "goal",
+        "source_requirements",
+        "changed_files",
+        "diff_stat",
+        "retry_count",
+        "verifier_json_paths",
+        "parent_commit",
+        "commit_sha",
+        "started_at",
+        "completed_at"
+      ],
+      "properties": {
+        "phase_status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "REVIEW_FAIL",
+            "BLOCKED"
+          ]
+        },
+        "goal": {
+          "type": "string"
+        },
+        "source_requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diff_stat": {
+          "type": "string"
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verifier_json_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parent_commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "completed_at": {
+          "type": "string"
+        }
+      }
+    },
+    "phase_commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase_id",
+        "commit_sha"
+      ],
+      "properties": {
+        "phase_id": {
+          "type": "string",
+          "pattern": "^P[0-9]+$"
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      }
+    },
+    "decision_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decided_by",
+        "at",
+        "summary"
+      ],
+      "properties": {
+        "decided_by": {
+          "type": "string",
+          "enum": [
+            "codex-internal",
+            "claude"
+          ]
+        },
+        "at": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "model_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "requested",
+        "actual"
+      ],
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "requested": {
+          "type": "string"
+        },
+        "actual": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "model_degraded": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Longtask Handoff Manifest",
+  "description": "Cross-harness execution contract emitted by claude-longtask-plan.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "from_skill",
+    "produced_at",
+    "session_id",
+    "workflow_routing",
+    "codex_handoff_compatible",
+    "recommended_executor",
+    "next_step_hint",
+    "final_verify_cmd",
+    "final_e2e2_cmd",
+    "final_report_path"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string"
+    },
+    "from_skill": {
+      "type": "string",
+      "enum": [
+        "claude-longtask-plan"
+      ]
+    },
+    "produced_at": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "workflow_routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routing_decision",
+        "blocking_reason_codes",
+        "advisory_reason_codes"
+      ],
+      "properties": {
+        "routing_decision": {
+          "type": "string",
+          "enum": [
+            "fast_allowed",
+            "safe_recommended",
+            "safe_required",
+            "blocked_until_replan"
+          ]
+        },
+        "blocking_reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routing_reason_code"
+          }
+        },
+        "advisory_reason_codes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routing_reason_code"
+          }
+        }
+      }
+    },
+    "codex_handoff_compatible": {
+      "type": "boolean"
+    },
+    "codex_handoff_compatibility_proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_phases_codex_executable",
+        "no_skill_dispatch_in_phase_body",
+        "no_browser_ops_outside_final_e2e2",
+        "no_mid_phase_claude_required",
+        "checked_plan_sha256",
+        "plan_integrity_review_path",
+        "non_codex_executable_phases",
+        "violation_codes",
+        "required_repairs"
+      ],
+      "properties": {
+        "all_phases_codex_executable": {
+          "type": "boolean"
+        },
+        "no_skill_dispatch_in_phase_body": {
+          "type": "boolean"
+        },
+        "no_browser_ops_outside_final_e2e2": {
+          "type": "boolean"
+        },
+        "no_mid_phase_claude_required": {
+          "type": "boolean"
+        },
+        "checked_plan_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "plan_integrity_review_path": {
+          "type": "string"
+        },
+        "non_codex_executable_phases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          }
+        },
+        "violation_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_repairs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "recommended_executor": {
+      "type": "string",
+      "enum": [
+        "codex-longtask-code",
+        "claude-longtask-code",
+        "claude-longtask",
+        "claude-longtask-plan"
+      ]
+    },
+    "next_step_hint": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+    },
+    "final_verify_cmd": {
+      "type": "string"
+    },
+    "final_e2e2_cmd": {
+      "type": "string"
+    },
+    "final_report_path": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "routing_reason_code": {
+      "type": "string",
+      "enum": [
+        "local_reversible",
+        "mechanically_verifiable",
+        "codex_compatible",
+        "safe_required_by_user",
+        "security_sensitive",
+        "regulatory_or_clinical",
+        "data_loss_risk",
+        "irreversible_migration",
+        "external_shipping",
+        "browser_mid_phase",
+        "non_codex_executable_phase",
+        "runtime_discovery_unknown",
+        "plan_repair_required"
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "case_id": "schema-reference-duplicate-active-rejection",
+  "case_type": "duplicate_active_schema_rejection",
+  "sample_candidates": [
+    "shared/schemas/handoff-manifest.schema.json",
+    "docs/archive/handoff-manifest.schema.json",
+    "migrations/schema/handoff-manifest.schema.json",
+    "skills/claude-longtask/handoff-manifest.schema.json"
+  ],
+  "expected_rejected": [
+    "skills/claude-longtask/handoff-manifest.schema.json"
+  ],
+  "description": "Only shared/schemas is executable authority; active duplicates outside it are rejected."
+}

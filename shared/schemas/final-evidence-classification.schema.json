@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Final Evidence Classification",
+  "description": "JSON-first final evidence contract for the dual-harness final smoke report.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mechanical_evidence_classification",
+    "browser_evidence_classification",
+    "safe_path_evidence_level",
+    "value_claim",
+    "browser_target_detected",
+    "overclaim_guard_passed",
+    "artifact_bundle"
+  ],
+  "properties": {
+    "mechanical_evidence_classification": {
+      "type": "string",
+      "enum": [
+        "mechanical_pass",
+        "mechanical_fail",
+        "mechanical_blocked"
+      ]
+    },
+    "browser_evidence_classification": {
+      "type": "string",
+      "enum": [
+        "browser_pass",
+        "no_browser_not_applicable",
+        "skipped_environment",
+        "blocked"
+      ]
+    },
+    "safe_path_evidence_level": {
+      "type": "string",
+      "enum": [
+        "bounded_behavior",
+        "full_workflow_comparison",
+        "visibility_only",
+        "skipped_environment",
+        "blocked"
+      ]
+    },
+    "value_claim": {
+      "type": "string",
+      "enum": [
+        "measured_speedup",
+        "mechanical_value_only",
+        "baseline_not_rerun",
+        "blocked_no_claim"
+      ]
+    },
+    "browser_target_detected": {
+      "type": "boolean"
+    },
+    "overclaim_guard_passed": {
+      "type": "boolean"
+    },
+    "artifact_bundle": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

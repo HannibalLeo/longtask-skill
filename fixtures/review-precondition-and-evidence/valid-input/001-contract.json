@@ -1,0 +1,58 @@
+{
+  "case_id": "review-precondition-valid-input",
+  "description": "Valid review input artifacts produce a PASS final stage result.",
+  "case_type": "contract_case",
+  "actual": {
+    "review_stage": "R13",
+    "final_status": "ALL_PASS",
+    "blocked_reason": null,
+    "stage_result": {
+      "stage_id": "R13",
+      "stage_status": "PASS",
+      "artifact_paths": [
+        ".longtask/state/spec/handoff-manifest.json",
+        ".longtask/state/spec/codex-code-exit.json",
+        ".longtask/reports/spec/final-smoke/evidence-classification.json"
+      ],
+      "requirements_checked": [
+        "REQ-014",
+        "REQ-015",
+        "REQ-016",
+        "REQ-017",
+        "REQ-018"
+      ],
+      "failed_requirements": [],
+      "recovery_command": null,
+      "reason": "R1-R13 checks passed with JSON-backed evidence."
+    },
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "recovery_routes": {
+      "resume_codex_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+      "plan_repair_command": "claude-longtask-plan .longtask/plans/spec.md --repair review-preconditions",
+      "safe_claude_command": "claude-longtask-code .longtask/plans/spec.md --safe-path",
+      "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry",
+      "audited_human_override_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --request-soft-override safe_recommended"
+    },
+    "overclaim_check": null
+  },
+  "expected": {
+    "review_stage": "R13",
+    "final_status": "ALL_PASS",
+    "blocked_reason": null,
+    "stage_result": {
+      "stage_id": "R13",
+      "stage_status": "PASS",
+      "failed_requirements": [],
+      "recovery_command": null
+    }
+  }
+}

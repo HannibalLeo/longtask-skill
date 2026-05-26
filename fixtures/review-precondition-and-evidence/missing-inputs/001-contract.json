@@ -1,0 +1,57 @@
+{
+  "case_id": "review-precondition-missing-inputs",
+  "description": "Missing handoff and exit-state inputs fail at R1 with concrete precondition recovery.",
+  "case_type": "contract_case",
+  "actual": {
+    "review_stage": "R1",
+    "final_status": "REVIEW_FAIL",
+    "blocked_reason": "BLOCKED_REVIEW_PRECONDITION",
+    "stage_result": {
+      "stage_id": "R1",
+      "stage_status": "REVIEW_FAIL",
+      "artifact_paths": [
+        ".longtask/state/spec/handoff-manifest.json",
+        ".longtask/state/spec/codex-code-exit.json"
+      ],
+      "requirements_checked": [
+        "REQ-014",
+        "REQ-017"
+      ],
+      "failed_requirements": [
+        "REQ-014"
+      ],
+      "recovery_command": "claude-longtask-plan .longtask/plans/spec.md --repair review-preconditions",
+      "reason": "Required handoff artifacts are missing."
+    },
+    "failed_artifact_paths": [
+      ".longtask/state/spec/handoff-manifest.json",
+      ".longtask/state/spec/codex-code-exit.json"
+    ],
+    "preserved_phase_commits": [],
+    "recovery_routes": {
+      "resume_codex_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P3",
+      "plan_repair_command": "claude-longtask-plan .longtask/plans/spec.md --repair review-preconditions",
+      "safe_claude_command": "claude-longtask-code .longtask/plans/spec.md --safe-path",
+      "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry",
+      "audited_human_override_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --request-soft-override safe_recommended"
+    },
+    "overclaim_check": null
+  },
+  "expected": {
+    "review_stage": "R1",
+    "final_status": "REVIEW_FAIL",
+    "blocked_reason": "BLOCKED_REVIEW_PRECONDITION",
+    "stage_result": {
+      "stage_id": "R1",
+      "stage_status": "REVIEW_FAIL",
+      "failed_requirements": [
+        "REQ-014"
+      ],
+      "recovery_command": "claude-longtask-plan .longtask/plans/spec.md --repair review-preconditions"
+    },
+    "failed_artifact_paths": [
+      ".longtask/state/spec/handoff-manifest.json",
+      ".longtask/state/spec/codex-code-exit.json"
+    ]
+  }
+}

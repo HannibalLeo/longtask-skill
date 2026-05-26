@@ -1,0 +1,60 @@
+{
+  "case_id": "review-precondition-absent-evidence",
+  "description": "Missing final verification evidence fails at R10 and requires evidence repair before retry.",
+  "case_type": "contract_case",
+  "actual": {
+    "review_stage": "R10",
+    "final_status": "REVIEW_FAIL",
+    "blocked_reason": "BLOCKED_MISSING_ARTIFACT",
+    "stage_result": {
+      "stage_id": "R10",
+      "stage_status": "REVIEW_FAIL",
+      "artifact_paths": [
+        ".longtask/reports/spec/final-smoke/evidence-classification.json",
+        ".longtask/reports/spec/final-report.md"
+      ],
+      "requirements_checked": [
+        "REQ-014",
+        "REQ-018"
+      ],
+      "failed_requirements": [
+        "REQ-018"
+      ],
+      "recovery_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry --repair-evidence",
+      "reason": "Final verify/E2E2 evidence is absent for claimed pass."
+    },
+    "failed_artifact_paths": [
+      ".longtask/reports/spec/final-smoke/evidence-classification.json"
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "6666666666666666666666666666666666666666"
+      }
+    ],
+    "recovery_routes": {
+      "resume_codex_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+      "plan_repair_command": "claude-longtask-plan .longtask/plans/spec.md --repair evidence-contract",
+      "safe_claude_command": "claude-longtask-code .longtask/plans/spec.md --safe-path",
+      "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry --repair-evidence",
+      "audited_human_override_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --request-soft-override safe_recommended"
+    },
+    "overclaim_check": null
+  },
+  "expected": {
+    "review_stage": "R10",
+    "final_status": "REVIEW_FAIL",
+    "blocked_reason": "BLOCKED_MISSING_ARTIFACT",
+    "stage_result": {
+      "stage_id": "R10",
+      "stage_status": "REVIEW_FAIL",
+      "failed_requirements": [
+        "REQ-018"
+      ],
+      "recovery_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry --repair-evidence"
+    },
+    "failed_artifact_paths": [
+      ".longtask/reports/spec/final-smoke/evidence-classification.json"
+    ]
+  }
+}

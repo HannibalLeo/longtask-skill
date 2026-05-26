@@ -59,7 +59,14 @@
     },
     "review-precondition-and-evidence": {
       "description": "Owned by P6+.",
-      "cases": []
+      "cases": [
+        "fixtures/review-precondition-and-evidence/valid-input/001-contract.json",
+        "fixtures/review-precondition-and-evidence/missing-inputs/001-contract.json",
+        "fixtures/review-precondition-and-evidence/missing-verifier/001-contract.json",
+        "fixtures/review-precondition-and-evidence/commit-scope-defect/001-contract.json",
+        "fixtures/review-precondition-and-evidence/absent-evidence/001-contract.json",
+        "fixtures/review-precondition-and-evidence/final-report-overclaim/001-contract.json"
+      ]
     },
     "install-temp-home-safety": {
       "description": "Owned by P7+.",

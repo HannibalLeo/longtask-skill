@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Block push if version markers disagree. Enable with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+exec bash "$(git rev-parse --show-toplevel)/scripts/check-versions.sh"

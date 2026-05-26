@@ -1,0 +1,42 @@
+{
+  "case_id": "wrapper-default-non-tty-pty-propagation",
+  "description": "Defaults to PTY mode when stderr is not a TTY and preserves argv/stdin/stdout/stderr/exit.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-default-non-tty\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r1"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "0"
+  },
+  "fake_codex": {
+    "stdout": "fake-stdout-pty\n",
+    "stderr": "fake-stderr-pty\n",
+    "exit": 7
+  },
+  "expected": {
+    "exit_code": 7,
+    "stdout": "fake-stdout-pty\n",
+    "stderr_first_line": "[codex-wrapper] mode=pty reason=stderr_not_tty",
+    "stderr_contains": [
+      "fake-stderr-pty\n"
+    ],
+    "argv": [
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "-c",
+      "model_reasoning_effort=\"xhigh\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-"
+    ],
+    "stdin": "prompt-default-non-tty\n",
+    "script_invoked": true
+  }
+}

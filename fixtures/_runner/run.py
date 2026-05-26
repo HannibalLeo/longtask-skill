@@ -6,7 +6,11 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
+import stat
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -179,12 +183,158 @@ def _run_case_contract_case(case: dict[str, Any]) -> tuple[bool, dict[str, Any]]
     return not mismatches, {"actual": actual, "expected": expected, "mismatches": mismatches}
 
 
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    mode = path.stat().st_mode
+    path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _expand_tokens(value: Any, tokens: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        for key, token_value in tokens.items():
+            value = value.replace(f"{{{key}}}", token_value)
+        return value
+    if isinstance(value, list):
+        return [_expand_tokens(item, tokens) for item in value]
+    if isinstance(value, dict):
+        return {k: _expand_tokens(v, tokens) for k, v in value.items()}
+    return value
+
+
+def _run_case_wrapper_exec(case: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    wrapper_relpath = case.get("wrapper_path", "claude/lib/codex-wrapper.sh")
+    wrapper_abs = (REPO_ROOT / wrapper_relpath).resolve()
+    if not wrapper_abs.exists():
+        return False, {"error": "missing_wrapper", "wrapper_path": wrapper_relpath}
+
+    with tempfile.TemporaryDirectory(prefix="wrapper-matrix-") as tmp:
+        tmp_dir = Path(tmp)
+        bin_dir = tmp_dir / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        args_file = tmp_dir / "codex-args.bin"
+        stdin_file = tmp_dir / "codex-stdin.txt"
+        fake_script_marker = tmp_dir / "fake-script-used.txt"
+        prompt_file = tmp_dir / "prompt.txt"
+        output_schema_file = tmp_dir / "schema.json"
+        last_message_file = tmp_dir / "last-message.json"
+
+        prompt_text = case.get("prompt_text", "")
+        prompt_file.write_text(prompt_text, encoding="utf-8")
+        output_schema_file.write_text('{"type":"object"}\n', encoding="utf-8")
+        last_message_file.write_text("{}\n", encoding="utf-8")
+
+        tokens = {
+            "PROMPT_FILE": str(prompt_file),
+            "OUTPUT_SCHEMA_FILE": str(output_schema_file),
+            "LAST_MESSAGE_FILE": str(last_message_file),
+        }
+
+        fake_codex = case.get("fake_codex", {})
+        fake_codex_script = """#!/usr/bin/env bash
+set -euo pipefail
+: "${FAKE_CODEX_ARGS_FILE:?}"
+: "${FAKE_CODEX_STDIN_FILE:?}"
+: "${FAKE_CODEX_SLEEP_BEFORE_IO:=0}"
+if [ "$FAKE_CODEX_SLEEP_BEFORE_IO" != "0" ]; then
+  sleep "$FAKE_CODEX_SLEEP_BEFORE_IO"
+fi
+printf '%s\\0' "$@" > "$FAKE_CODEX_ARGS_FILE"
+cat > "$FAKE_CODEX_STDIN_FILE"
+printf '%s' "${FAKE_CODEX_STDOUT:-}"
+printf '%s' "${FAKE_CODEX_STDERR:-}" >&2
+exit "${FAKE_CODEX_EXIT:-0}"
+"""
+        _write_executable(bin_dir / "codex", fake_codex_script)
+
+        fake_script = """#!/usr/bin/env bash
+set -euo pipefail
+: "${FAKE_SCRIPT_MARKER:?}"
+printf 'invoked\\n' >> "$FAKE_SCRIPT_MARKER"
+if [ "$#" -lt 3 ] || [ "${1:-}" != "-q" ] || [ "${2:-}" != "/dev/null" ]; then
+  echo "unexpected script(1) args: $*" >&2
+  exit 97
+fi
+shift 2
+"$@"
+"""
+        _write_executable(bin_dir / "script", fake_script)
+
+        env = os.environ.copy()
+        env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+        env["FAKE_CODEX_ARGS_FILE"] = str(args_file)
+        env["FAKE_CODEX_STDIN_FILE"] = str(stdin_file)
+        env["FAKE_SCRIPT_MARKER"] = str(fake_script_marker)
+        env["FAKE_CODEX_STDOUT"] = str(fake_codex.get("stdout", ""))
+        env["FAKE_CODEX_STDERR"] = str(fake_codex.get("stderr", ""))
+        env["FAKE_CODEX_EXIT"] = str(fake_codex.get("exit", 0))
+        env["FAKE_CODEX_SLEEP_BEFORE_IO"] = str(fake_codex.get("sleep_before_io", 0))
+        for key, value in case.get("env", {}).items():
+            env[key] = str(value)
+
+        invoke_args = _expand_tokens(case.get("invoke_args", ["{PROMPT_FILE}"]), tokens)
+        cmd = ["bash", str(wrapper_abs), *invoke_args]
+        proc = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            env=env,
+            input=case.get("stdin_text", ""),
+            text=True,
+            capture_output=True,
+        )
+
+        actual_argv: list[str] = []
+        if args_file.exists():
+            raw = args_file.read_bytes()
+            if raw:
+                actual_argv = [x.decode("utf-8") for x in raw.split(b"\0") if x]
+        actual_stdin = stdin_file.read_text(encoding="utf-8") if stdin_file.exists() else ""
+        script_invoked = fake_script_marker.exists()
+
+        expected = _expand_tokens(case.get("expected", {}), tokens)
+        mismatches: list[str] = []
+        if "exit_code" in expected and proc.returncode != expected["exit_code"]:
+            mismatches.append(f"exit_code: expected {expected['exit_code']!r}, got {proc.returncode!r}")
+        if "stdout" in expected and proc.stdout != expected["stdout"]:
+            mismatches.append(f"stdout: expected {expected['stdout']!r}, got {proc.stdout!r}")
+        if "stderr" in expected and proc.stderr != expected["stderr"]:
+            mismatches.append(f"stderr: expected {expected['stderr']!r}, got {proc.stderr!r}")
+        if "stderr_first_line" in expected:
+            actual_first = proc.stderr.splitlines()[0] if proc.stderr.splitlines() else ""
+            if actual_first != expected["stderr_first_line"]:
+                mismatches.append(
+                    f"stderr_first_line: expected {expected['stderr_first_line']!r}, got {actual_first!r}"
+                )
+        if "argv" in expected and actual_argv != expected["argv"]:
+            mismatches.append(f"argv: expected {expected['argv']!r}, got {actual_argv!r}")
+        if "stdin" in expected and actual_stdin != expected["stdin"]:
+            mismatches.append(f"stdin: expected {expected['stdin']!r}, got {actual_stdin!r}")
+        if "script_invoked" in expected and script_invoked != expected["script_invoked"]:
+            mismatches.append(f"script_invoked: expected {expected['script_invoked']!r}, got {script_invoked!r}")
+        for expected_line in expected.get("stderr_contains", []):
+            if expected_line not in proc.stderr:
+                mismatches.append(f"stderr_contains: missing {expected_line!r}")
+
+        details = {
+            "command": cmd,
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "actual_argv": actual_argv,
+            "actual_stdin": actual_stdin,
+            "script_invoked": script_invoked,
+            "mismatches": mismatches,
+        }
+        return not mismatches, details
+
+
 CASE_DISPATCH = {
     "schema_parse": _run_case_schema_parse,
     "ref_resolution": _run_case_ref_resolution,
     "duplicate_active_schema_rejection": _run_case_duplicate_rejection,
     "allowed_doc_migration_references": _run_case_allowed_doc_migration,
     "contract_case": _run_case_contract_case,
+    "wrapper_exec_case": _run_case_wrapper_exec,
 }
 
 

@@ -1,0 +1,43 @@
+{
+  "case_id": "wrapper-forced-pty-overrides-tty",
+  "description": "CODEX_LONGTASK_FORCE_PTY=1 forces PTY mode even when stderr is a TTY.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-forced-pty\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r4"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "1",
+    "CODEX_LONGTASK_FORCE_PTY": "1"
+  },
+  "fake_codex": {
+    "stdout": "forced-pty-stdout\n",
+    "stderr": "forced-pty-stderr\n",
+    "exit": 11
+  },
+  "expected": {
+    "exit_code": 11,
+    "stdout": "forced-pty-stdout\n",
+    "stderr_first_line": "[codex-wrapper] mode=pty reason=forced_by_env",
+    "stderr_contains": [
+      "forced-pty-stderr\n"
+    ],
+    "argv": [
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "-c",
+      "model_reasoning_effort=\"xhigh\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-"
+    ],
+    "stdin": "prompt-forced-pty\n",
+    "script_invoked": true
+  }
+}

@@ -26,9 +26,10 @@
 #   4. PTY workaround is RETAINED (decision #1):
 #      codex 0.132.0 release notes do NOT mention a fix for issue #19945
 #      (silent exit when stdout is not a TTY and prompt > ~10KB).  The
-#      `script -q /dev/null` re-attach is kept until a controlled before/after
-#      test on macOS + Linux confirms the bug is gone.
-#      Set CODEX_LONGTASK_DISABLE_PTY=1 to bypass the workaround for testing.
+#      `script -q /dev/null` re-attach is kept, but now selected adaptively:
+#      default PTY when stderr is not a TTY, default direct when stderr is a
+#      TTY. `CODEX_LONGTASK_DISABLE_PTY=1` forces direct.
+#      `CODEX_LONGTASK_FORCE_PTY=1` forces PTY.
 #      Refs: https://github.com/openai/codex/issues/19945
 #
 # === Usage ===
@@ -41,25 +42,22 @@
 #   CODEX_LONGTASK_SANDBOX       default: workspace-write
 #   CODEX_LONGTASK_APPROVALS     default: never
 #   CODEX_LONGTASK_REPO          optional: repo cwd for the child (--cd)
-#   CODEX_LONGTASK_STALL_SECONDS default: 600  (10 min no stdout line → kill)
-#   CODEX_LONGTASK_DISABLE_PTY   set to 1 to skip script(1) PTY workaround
+#   CODEX_LONGTASK_STALL_SECONDS default: 600 (no-output timeout, exit 142)
+#   CODEX_LONGTASK_DISABLE_PTY   set to 1 to force direct mode
+#   CODEX_LONGTASK_FORCE_PTY     set to 1 to force PTY mode
+#   CODEX_LONGTASK_TEST_STDERR_IS_TTY test-only fixture override; do not use
+#                                  for production routing decisions.
 #
 # === Exit codes ===
 #   0   codex completed normally
 #   2   wrapper usage error (missing / invalid prompt file)
-#   142 STALL_TIMEOUT: no stdout line for STALL_SECONDS
-#   *   CRASH: codex non-zero exit, propagated via pipefail
+#   142 no output line observed for STALL_SECONDS
+#   *   codex non-zero exit, propagated
 #
 # === Stdin requirement ===
 #   Prompt MUST be a file path, not inline.  Long inline prompts trigger
 #   codex's stdin-pipe hang (see memory feedback_codex_cli_stdin_pipe.md).
 #
-# === Kill model: stall-only ===
-#   No wall-clock cap.  SECONDS resets on every read line; checked after
-#   the read loop exits.  SECONDS >= STALL_SECONDS means timeout, not EOF.
-#   (macOS bash 3.2: `read -t` returns exit 1 on both timeout and EOF; only
-#   bash 4+ distinguishes via exit >128.)
-
 set -u
 
 PROMPT_FILE="${1:-}"
@@ -67,19 +65,53 @@ RUN_ID="${2:-$$}"
 OUTPUT_SCHEMA="${3:-}"
 LAST_MESSAGE="${4:-}"
 
-if [ -z "$PROMPT_FILE" ] || [ ! -f "$PROMPT_FILE" ]; then
-  echo "codex-wrapper.sh: missing or invalid prompt file: ${PROMPT_FILE:-<empty>}" >&2
-  echo "usage: $0 <prompt_file> [run_id] [output_schema_json] [last_message_json]" >&2
-  exit 2
-fi
-
 MODEL="${CODEX_LONGTASK_MODEL:-gpt-5.5}"
 REASONING="${CODEX_LONGTASK_REASONING:-xhigh}"
 SANDBOX="${CODEX_LONGTASK_SANDBOX:-workspace-write}"
 APPROVALS="${CODEX_LONGTASK_APPROVALS:-never}"
 REPO="${CODEX_LONGTASK_REPO:-}"
-STALL_SECONDS="${CODEX_LONGTASK_STALL_SECONDS:-600}"
 DISABLE_PTY="${CODEX_LONGTASK_DISABLE_PTY:-0}"
+FORCE_PTY="${CODEX_LONGTASK_FORCE_PTY:-0}"
+# Test-only fixture hook: override TTY detection deterministically.
+TEST_STDERR_IS_TTY="${CODEX_LONGTASK_TEST_STDERR_IS_TTY:-}"
+STALL_SECONDS="${CODEX_LONGTASK_STALL_SECONDS:-600}"
+
+if ! [[ "$STALL_SECONDS" =~ ^[0-9]+$ ]] || [ "$STALL_SECONDS" -le 0 ]; then
+  STALL_SECONDS=600
+fi
+
+STDERR_IS_TTY=0
+if [ "$TEST_STDERR_IS_TTY" = "1" ]; then
+  STDERR_IS_TTY=1
+elif [ "$TEST_STDERR_IS_TTY" = "0" ]; then
+  STDERR_IS_TTY=0
+elif [ -t 2 ]; then
+  STDERR_IS_TTY=1
+fi
+
+MODE="direct"
+REASON="stderr_is_tty"
+if [ "$FORCE_PTY" = "1" ]; then
+  MODE="pty"
+  REASON="forced_by_env"
+elif [ "$DISABLE_PTY" = "1" ]; then
+  MODE="direct"
+  REASON="disabled_by_env"
+elif [ "$STDERR_IS_TTY" = "1" ]; then
+  MODE="direct"
+  REASON="stderr_is_tty"
+else
+  MODE="pty"
+  REASON="stderr_not_tty"
+fi
+
+printf '[codex-wrapper] mode=%s reason=%s\n' "$MODE" "$REASON" >&2
+
+if [ -z "$PROMPT_FILE" ] || [ ! -f "$PROMPT_FILE" ]; then
+  echo "codex-wrapper.sh: missing or invalid prompt file: ${PROMPT_FILE:-<empty>}" >&2
+  echo "usage: $0 <prompt_file> [run_id] [output_schema_json] [last_message_json]" >&2
+  exit 2
+fi
 
 LAUNCHER="/tmp/codex-launch-${RUN_ID}.sh"
 
@@ -120,33 +152,77 @@ LAUNCHEOF
 
 chmod +x "$LAUNCHER"
 
-# Run the launcher, optionally under script(1) for PTY workaround.
-# DISABLE_PTY=1 lets the owner run before/after tests for issue #19945.
-set -o pipefail
-SECONDS=0
+# Run the launcher in direct or PTY mode with no-output stall timeout.
+HEARTBEAT_FILE="/tmp/codex-heartbeat-${RUN_ID}.txt"
+date +%s > "$HEARTBEAT_FILE"
 
-if [ "$DISABLE_PTY" = "1" ]; then
-  bash "$LAUNCHER" 2>&1 \
-  | { while IFS= read -r -t "$STALL_SECONDS" line; do
-        SECONDS=0
-        printf "%s\n" "$line"
-      done
-      [ "$SECONDS" -ge "$STALL_SECONDS" ] && exit 142
-      exit 0
-    }
+# Launch in a subshell so timeout kill can terminate the full wrapper command
+# tree without leaking late child output after exit 142.
+if [ "$MODE" = "pty" ]; then
+  (
+    script -q /dev/null "$LAUNCHER" \
+      > >(while IFS= read -r line; do
+            printf "%s\n" "$line"
+            date +%s > "$HEARTBEAT_FILE"
+          done) \
+      2> >(while IFS= read -r line; do
+            printf "%s\n" "$line" >&2
+            date +%s > "$HEARTBEAT_FILE"
+          done)
+  ) &
 else
-  # PTY workaround: re-attach pseudo-TTY via script(1).
-  # `script -q /dev/null <cmd>` works on BSD (macOS) and util-linux.
-  script -q /dev/null "$LAUNCHER" 2>&1 \
-  | { while IFS= read -r -t "$STALL_SECONDS" line; do
-        SECONDS=0
-        printf "%s\n" "$line"
-      done
-      [ "$SECONDS" -ge "$STALL_SECONDS" ] && exit 142
-      exit 0
-    }
+  (
+    bash "$LAUNCHER" \
+      > >(while IFS= read -r line; do
+            printf "%s\n" "$line"
+            date +%s > "$HEARTBEAT_FILE"
+          done) \
+      2> >(while IFS= read -r line; do
+            printf "%s\n" "$line" >&2
+            date +%s > "$HEARTBEAT_FILE"
+          done)
+  ) &
 fi
-EXIT=$?
+CHILD_PID=$!
+
+kill_process_tree() {
+  local sig="$1"
+  local root_pid="$2"
+  local child_pids=""
+  local child_pid=""
+
+  if command -v pgrep >/dev/null 2>&1; then
+    child_pids="$(pgrep -P "$root_pid" 2>/dev/null || true)"
+    for child_pid in $child_pids; do
+      kill_process_tree "$sig" "$child_pid"
+    done
+  fi
+
+  kill "-$sig" "$root_pid" 2>/dev/null || true
+}
+
+TIMED_OUT=0
+while kill -0 "$CHILD_PID" 2>/dev/null; do
+  sleep 1
+  now_epoch="$(date +%s)"
+  last_epoch="$(cat "$HEARTBEAT_FILE" 2>/dev/null || printf '%s\n' "$now_epoch")"
+  if [ $((now_epoch - last_epoch)) -ge "$STALL_SECONDS" ]; then
+    TIMED_OUT=1
+    kill_process_tree TERM "$CHILD_PID"
+    kill_process_tree KILL "$CHILD_PID"
+    break
+  fi
+done
+
+if [ "$TIMED_OUT" = "1" ]; then
+  wait "$CHILD_PID" 2>/dev/null || true
+  EXIT=142
+else
+  wait "$CHILD_PID"
+  EXIT=$?
+fi
+
+rm -f "$HEARTBEAT_FILE"
 
 # Cleanup launcher unless caller passed an explicit RUN_ID (they own the path).
 if [ -z "${2:-}" ]; then

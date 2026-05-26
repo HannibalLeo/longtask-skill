@@ -1,0 +1,42 @@
+{
+  "case_id": "wrapper-default-tty-direct-propagation",
+  "description": "Defaults to direct mode when stderr is a TTY and preserves streams and exit code.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-default-tty\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r2"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "1"
+  },
+  "fake_codex": {
+    "stdout": "fake-stdout-direct\n",
+    "stderr": "fake-stderr-direct\n",
+    "exit": 0
+  },
+  "expected": {
+    "exit_code": 0,
+    "stdout": "fake-stdout-direct\n",
+    "stderr_first_line": "[codex-wrapper] mode=direct reason=stderr_is_tty",
+    "stderr_contains": [
+      "fake-stderr-direct\n"
+    ],
+    "argv": [
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "-c",
+      "model_reasoning_effort=\"xhigh\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-"
+    ],
+    "stdin": "prompt-default-tty\n",
+    "script_invoked": false
+  }
+}

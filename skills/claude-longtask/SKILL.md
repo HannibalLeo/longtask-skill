@@ -373,7 +373,7 @@ All Codex children — workers, verifiers, secondary reviewers — go through `l
 - **Stall kill** = 10 min no new stdout line → exit 142 (env: `CODEX_LONGTASK_STALL_SECONDS`)
 - **Structured output** = pass `OUTPUT_SCHEMA` (arg 3) → adds `--output-schema <file>`; pass `LAST_MESSAGE` (arg 4) → adds `-o <file>` (canonical JSON of last message). Both used by verifier / hybrid-judgment dispatches.
 - **JSONL events** = `--json` always on, so Claude main-line can parse per-turn events.
-- **PTY workaround** = `script -q /dev/null` wraps the codex invocation to bypass codex#19945 (no-TTY + large prompt → silent exit). Set `CODEX_LONGTASK_DISABLE_PTY=1` to opt out for testing whether the upstream bug is fixed.
+- **PTY routing + overrides** = `script -q /dev/null` is used adaptively: default PTY when stderr is not a TTY, default direct when stderr is a TTY. [non-active-wrapper-env-mention] Maintainer-only debug escape hatch: `CODEX_LONGTASK_DISABLE_PTY=1` forces direct and `CODEX_LONGTASK_FORCE_PTY=1` forces PTY; do not instruct sub-agents to set these in normal execution.
 - **Stdin** = prompt MUST be passed as a file path (positional arg 1). Inline prompts via stdin pipe trigger a codex hang.
 
 Exit codes:

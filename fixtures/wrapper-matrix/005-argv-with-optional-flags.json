@@ -1,0 +1,51 @@
+{
+  "case_id": "wrapper-argv-with-optional-flags",
+  "description": "Wrapper propagates optional --cd, --output-schema, and -o arguments to codex argv.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-with-optional-flags\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r5",
+    "{OUTPUT_SCHEMA_FILE}",
+    "{LAST_MESSAGE_FILE}"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "1",
+    "CODEX_LONGTASK_REPO": "/tmp/example-repo",
+    "CODEX_LONGTASK_MODEL": "gpt-5.5-mini",
+    "CODEX_LONGTASK_REASONING": "high",
+    "CODEX_LONGTASK_APPROVALS": "never"
+  },
+  "fake_codex": {
+    "stdout": "optional-flags-stdout\n",
+    "stderr": "",
+    "exit": 0
+  },
+  "expected": {
+    "exit_code": 0,
+    "stdout": "optional-flags-stdout\n",
+    "stderr_first_line": "[codex-wrapper] mode=direct reason=stderr_is_tty",
+    "argv": [
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5-mini",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "-c",
+      "model_reasoning_effort=\"high\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "--cd",
+      "/tmp/example-repo",
+      "--output-schema",
+      "{OUTPUT_SCHEMA_FILE}",
+      "-o",
+      "{LAST_MESSAGE_FILE}",
+      "-"
+    ],
+    "stdin": "prompt-with-optional-flags\n",
+    "script_invoked": false
+  }
+}

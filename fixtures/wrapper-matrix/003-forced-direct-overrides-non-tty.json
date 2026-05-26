@@ -1,0 +1,43 @@
+{
+  "case_id": "wrapper-forced-direct-overrides-non-tty",
+  "description": "CODEX_LONGTASK_DISABLE_PTY=1 forces direct mode even when stderr is not a TTY.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-forced-direct\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r3"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "0",
+    "CODEX_LONGTASK_DISABLE_PTY": "1"
+  },
+  "fake_codex": {
+    "stdout": "forced-direct-stdout\n",
+    "stderr": "forced-direct-stderr\n",
+    "exit": 9
+  },
+  "expected": {
+    "exit_code": 9,
+    "stdout": "forced-direct-stdout\n",
+    "stderr_first_line": "[codex-wrapper] mode=direct reason=disabled_by_env",
+    "stderr_contains": [
+      "forced-direct-stderr\n"
+    ],
+    "argv": [
+      "exec",
+      "--json",
+      "--model",
+      "gpt-5.5",
+      "--sandbox",
+      "workspace-write",
+      "--skip-git-repo-check",
+      "-c",
+      "model_reasoning_effort=\"xhigh\"",
+      "-c",
+      "approval_policy=\"never\"",
+      "-"
+    ],
+    "stdin": "prompt-forced-direct\n",
+    "script_invoked": false
+  }
+}

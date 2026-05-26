@@ -67,7 +67,15 @@
     },
     "wrapper-matrix": {
       "description": "Owned by P5+.",
-      "cases": []
+      "cases": [
+        "fixtures/wrapper-matrix/001-default-non-tty-pty-propagation.json",
+        "fixtures/wrapper-matrix/002-default-tty-direct-propagation.json",
+        "fixtures/wrapper-matrix/003-forced-direct-overrides-non-tty.json",
+        "fixtures/wrapper-matrix/004-forced-pty-overrides-tty.json",
+        "fixtures/wrapper-matrix/005-argv-with-optional-flags.json",
+        "fixtures/wrapper-matrix/006-usage-error-exit-2.json",
+        "fixtures/wrapper-matrix/007-stall-timeout-exit-142.json"
+      ]
     },
     "final-evidence-classification": {
       "description": "Owned by P8.",

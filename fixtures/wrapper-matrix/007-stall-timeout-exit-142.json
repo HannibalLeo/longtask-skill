@@ -1,0 +1,28 @@
+{
+  "case_id": "wrapper-stall-timeout-exit-142",
+  "description": "No output for CODEX_LONGTASK_STALL_SECONDS exits 142 while preserving first diagnostic line.",
+  "case_type": "wrapper_exec_case",
+  "prompt_text": "prompt-stall-timeout\n",
+  "invoke_args": [
+    "{PROMPT_FILE}",
+    "wrapper-r7"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "1",
+    "CODEX_LONGTASK_STALL_SECONDS": "1"
+  },
+  "fake_codex": {
+    "sleep_before_io": 3,
+    "stdout": "late-stdout\n",
+    "stderr": "late-stderr\n",
+    "exit": 0
+  },
+  "expected": {
+    "exit_code": 142,
+    "stdout": "",
+    "stderr_first_line": "[codex-wrapper] mode=direct reason=stderr_is_tty",
+    "argv": [],
+    "stdin": "",
+    "script_invoked": false
+  }
+}

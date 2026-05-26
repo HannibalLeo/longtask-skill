@@ -1,0 +1,28 @@
+{
+  "case_id": "wrapper-usage-error-exit-2",
+  "description": "Missing prompt file returns usage exit 2 and still prints mode diagnostic as first stderr line.",
+  "case_type": "wrapper_exec_case",
+  "invoke_args": [
+    "/tmp/non-existent-prompt-for-wrapper-case.txt"
+  ],
+  "env": {
+    "CODEX_LONGTASK_TEST_STDERR_IS_TTY": "0"
+  },
+  "fake_codex": {
+    "stdout": "should-not-run\n",
+    "stderr": "should-not-run\n",
+    "exit": 0
+  },
+  "expected": {
+    "exit_code": 2,
+    "stdout": "",
+    "stderr_first_line": "[codex-wrapper] mode=pty reason=stderr_not_tty",
+    "stderr_contains": [
+      "codex-wrapper.sh: missing or invalid prompt file: /tmp/non-existent-prompt-for-wrapper-case.txt",
+      "usage: "
+    ],
+    "argv": [],
+    "stdin": "",
+    "script_invoked": false
+  }
+}

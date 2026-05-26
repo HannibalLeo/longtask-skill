@@ -1,0 +1,446 @@
+{
+  "generated_at_utc": "2026-05-26T11:15:43Z",
+  "phase": "P0",
+  "expected_later_artifacts": [
+    {
+      "phase": "P1",
+      "path": "package.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "codex-extension.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".claude-plugin/marketplace.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "VERSION",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/claude-longtask/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/claude-longtask-plan/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/claude-longtask-code/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/claude-longtask-review/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/codex-longtask/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "skills/codex-longtask-code/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "claude/prompts/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "claude/lib/codex-wrapper.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "claude/lib/smoke.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "codex/prompts/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "codex/lib/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "shared/schemas/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "shared/prompts/handoff-manifest-spec.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": "docs/decisions/codex-discovery.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/discovery/codex-discovery.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/discovery/claude-discovery.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/discovery/target-discovery-decision.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/discovery/p1-git-rename-summary.txt",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P1",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/discovery/plugin-source-to-destination-inventory.tsv",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/verifier-result.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/decision-review.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/plan-integrity-review.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/codex-clarification.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/handoff-manifest.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/codex-code-exit-state.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/review-stage-result.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "shared/schemas/final-evidence-classification.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "fixtures/_runner/manifest.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "fixtures/_runner/run.py",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "fixtures/schema-reference/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "scripts/run-fixtures.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "scripts/verify-schema-authority.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P2",
+      "path": "scripts/scope-gate.py",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "shared/schemas/handoff-manifest.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "shared/schemas/plan-integrity-review.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "shared/prompts/handoff-manifest-spec.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "claude/prompts/plan-writer.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "claude/prompts/plan-integrity-review.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "fixtures/handoff-routing-startup/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P3",
+      "path": "fixtures/plan-integrity/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "skills/codex-longtask-code/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "codex/prompts/codex-longtask-code.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "codex/prompts/worker.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "codex/prompts/verifier.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "codex/prompts/retry-worker.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "codex/lib/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "shared/schemas/codex-code-exit-state.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "fixtures/codex-exit/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P4",
+      "path": "scripts/smoke-codex-step6.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P5",
+      "path": "claude/lib/codex-wrapper.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P5",
+      "path": "fixtures/wrapper-matrix/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P5",
+      "path": "scripts/check-active-wrapper-env-mentions.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P5",
+      "path": "prompt cleanup edits in active skills/prompts",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "skills/claude-longtask-review/SKILL.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/batch-reward-hacking-sweep.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/batch-dod-evidence-audit.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/batch-req-coverage-audit.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/hybrid-code-review.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/cross-phase-diff-review.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "claude/prompts/review-fail-report.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "shared/schemas/review-stage-result.schema.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "fixtures/review-precondition-and-evidence/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P6",
+      "path": "scripts/smoke-claude-review.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "README.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "README.en.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "CHANGELOG.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "VERSION",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "docs/workflows.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "docs/migration-from-v0.2.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "scripts/install-codex.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "scripts/uninstall-codex.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "scripts/scan-stale-references.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": "fixtures/install-temp-home-safety/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P7",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/stale-references.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": "fixtures/final-evidence-classification/**",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": "scripts/e2e-dual-harness-smoke.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": "scripts/verify-all.sh",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/evidence-classification.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/value-measurement.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/safe-path-evidence.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/non-mutation-proof.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/fixture-summary.json",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-smoke/screenshots-not-applicable.md",
+      "status": "not_created_yet"
+    },
+    {
+      "phase": "P8",
+      "path": ".longtask/reports/2026-05-26-longtask-dual-harness-restructure-design/final-report.md",
+      "status": "not_created_yet"
+    }
+  ]
+}

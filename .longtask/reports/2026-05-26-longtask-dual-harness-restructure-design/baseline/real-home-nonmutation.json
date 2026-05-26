@@ -1,0 +1,10 @@
+{
+  "timestamp_utc": "2026-05-26T11:15:43Z",
+  "real_home_mutated": false,
+  "inspected_paths": [
+    "/Users/leoleon/.codex",
+    "/Users/leoleon/.claude",
+    "/Users/leoleon/Code/longtask-skill"
+  ],
+  "notes": "P0 performed read-only discovery and wrote only scoped report artifacts."
+}

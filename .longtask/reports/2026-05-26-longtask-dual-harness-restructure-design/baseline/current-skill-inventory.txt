@@ -1,0 +1,3 @@
+./plugin/skills/longtask/SKILL.md
+./plugin/skills/longtaskCode/SKILL.md
+./plugin/skills/longtaskPlan/SKILL.md

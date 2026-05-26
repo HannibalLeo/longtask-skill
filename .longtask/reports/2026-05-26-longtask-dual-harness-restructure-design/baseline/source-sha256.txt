@@ -1,0 +1,2 @@
+/Users/leoleon/Code/annotation-AI/docs/superpowers/specs/2026-05-26-longtask-dual-harness-restructure-design.md c155e91125d1c9fd65899eb4cfb2633966a3d65cce4d006f4a307ea53a981a15
+.longtask/specs/2026-05-26-longtask-dual-harness-restructure-design-enhanced-spec.md 3d44b4eade05a8bc3fe47bca6697801efa6f54ac2b62e1a5b0fd2995128a4fe3

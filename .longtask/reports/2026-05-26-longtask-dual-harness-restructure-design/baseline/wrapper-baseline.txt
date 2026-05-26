@@ -1,0 +1,5 @@
+bash -n plugin/lib/codex-wrapper.sh
+exit_code=0
+
+sha256=007085c60d92806b29f0d606d879f73f9cba4ee3dcbe028a016bd86e7e330f53
+path=plugin/lib/codex-wrapper.sh

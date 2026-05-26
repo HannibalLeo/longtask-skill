@@ -1,0 +1,5 @@
+./plugin/schemas/codex-clarification.schema.json
+./plugin/schemas/decision-review.schema.json
+./plugin/schemas/plan-integrity-review.schema.json
+./plugin/schemas/state-example.json
+./plugin/schemas/verifier-result.schema.json

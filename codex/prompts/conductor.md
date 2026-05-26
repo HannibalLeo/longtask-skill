@@ -153,30 +153,87 @@ of pausing for confirmation.
 
 ## Per Phase
 
+**Dispatch contract — MUST use `codex exec` children, MUST NOT run inline.**
+Your interactive codex session is the conductor. Every worker, verifier,
+and retry-worker turn is a **separate `codex exec` child** spawned via
+`codex/lib/codex-wrapper.sh`. Inheriting your parent session's reasoning
+effort (typically `xhigh`) for all phases is the bug this contract
+prevents — drop down per phase per the resolved `reasoning_effort`.
+
 1. Parse the phase block from the implementation plan / execution spec and
    validate required fields.
-2. Spawn one worker subagent with `prompts/worker.md`.
-3. Wait for the worker.
-4. If worker returns `decision_options`, run the Decision Gate and either pass
+2. **Resolve worker reasoning effort**:
+   `resolved_effort = phase.reasoning_effort or spec.default_reasoning_effort or 'medium'`.
+   Unknown value → `BLOCKED_SPEC`.
+3. **Spawn one worker subagent** with `prompts/worker.md` via the wrapper.
+   Pass `CODEX_LONGTASK_REASONING=$resolved_effort` so the child runs at
+   the resolved tier (not your conductor's tier):
+
+   ```bash
+   PROMPT=$(mktemp /tmp/longtask-worker-{Pn}-r{N}.XXXX.txt)
+   cat > "$PROMPT" <<'PROMPTEOF'
+   <assembled worker prompt — known-traps + project context + worker.md>
+   PROMPTEOF
+   CODEX_LONGTASK_REASONING="$resolved_effort" \
+   CODEX_LONGTASK_MODEL=gpt-5.5 \
+     bash codex/lib/codex-wrapper.sh "$PROMPT" "{Pn}-r{N}-worker"
+   ```
+
+4. Wait for the worker.
+5. If worker returns `decision_options`, run the Decision Gate and either pass
    the chosen follow-up to a retry worker or stop for a hard risk.
-5. Run git hard gates:
+6. Run git hard gates **in your own context**:
    - `git status --porcelain=v1`
    - `git diff --name-only HEAD`
    - reject paths outside `file_scope`
    - reject paths inside `do_not_touch`
    - ignore `.longtask/**`, the source/input spec, and the implementation plan
      artifact unless the phase explicitly owns them
-6. Spawn one fresh verifier subagent with `prompts/verifier.md`.
-7. Wait for verifier JSON.
-8. Extract exactly one JSON object from the verifier final message, validate it
-   against `schemas/verifier-result.schema.json`, and write it to
-   `.longtask/reports/<spec>/<Pn>-r<N>-verdict.json`.
-9. Confirm verifier did not mutate the worktree.
-10. PASS only when verifier JSON, `verify_cmd_exit`, DoD bullets, and
-   reward-hacking checks all pass.
-11. Commit only changed phase files.
-12. Retry with `prompts/retry-worker.md` until `max_retry_rounds`; then write a
-    blocked report and stop.
+7. **Spawn one fresh verifier subagent** with `prompts/verifier.md` via the
+   wrapper, **with schema enforcement**:
+
+   ```bash
+   B_PROMPT=$(mktemp /tmp/longtask-verifier-{Pn}-r{N}.XXXX.txt)
+   VERDICT=.longtask/reports/<spec>/<Pn>-r<N>-verdict.json
+   mkdir -p "$(dirname "$VERDICT")"
+   cat > "$B_PROMPT" <<'PROMPTEOF'
+   <assembled verifier prompt — known-traps reference + verifier.md>
+   PROMPTEOF
+   CODEX_LONGTASK_REASONING="$resolved_effort" \
+   CODEX_LONGTASK_MODEL=gpt-5.5 \
+     bash codex/lib/codex-wrapper.sh \
+     "$B_PROMPT" "{Pn}-r{N}-verifier" \
+     shared/schemas/verifier-result.schema.json \
+     "$VERDICT"
+   ```
+
+8. Wait for verifier JSON.
+9. Validate `$VERDICT` against `schemas/verifier-result.schema.json` (path
+   already populated by `--output-schema` in step 7; if missing or invalid
+   → `VERIFIER_SCHEMA_INVALID`).
+10. Confirm verifier did not mutate the worktree.
+11. PASS only when verifier JSON, `verify_cmd_exit`, DoD bullets, and
+    reward-hacking checks all pass.
+12. Commit only changed phase files (you, the conductor, run this — NOT the
+    worker child):
+
+    ```bash
+    git add -A && git commit -m "[longtask:<spec_basename>:{Pn}] <one-liner>"
+    ```
+
+13. On FAIL: reset worktree, auto-bump `resolved_effort` one tier
+    (medium → high → xhigh) unless phase pinned, spawn retry-worker child
+    via the wrapper with `prompts/retry-worker.md` prepended carrying the
+    prior verdict JSON. Up to `max_retry_rounds`. Then write a blocked
+    report and stop.
+
+**Anti-pattern to avoid:** do NOT read `worker.md` / `verifier.md` /
+`retry-worker.md` and execute them inline in your own context. Your
+context is the conductor — your job is `codex exec` dispatch, JSON
+parsing, scope gate, commit. Running the phase work inline defeats the
+cross-context isolation that prevents reward-hacking and keeps execution
+at the resolved (cheaper) `reasoning_effort` instead of your session's
+`xhigh`.
 
 ## Resume
 

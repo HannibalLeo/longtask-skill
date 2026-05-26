@@ -268,6 +268,33 @@ Write `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json`:
   `/longtask:longtaskPlan {source_spec_path} --resume` to refresh sha
   lineage; then `/longtask:codex-longtask-code <input_path> --resume`.
 
+## Dispatch mechanism — `codex exec` children, not inline execution
+
+**The conductor MUST spawn a fresh `codex exec` child for every worker /
+verifier / retry-worker turn.** It MUST NOT read `worker.md` /
+`verifier.md` / `retry-worker.md` and execute them inline in its own
+context. Two reasons this contract is load-bearing:
+
+1. **Reasoning-tier separation.** Your interactive codex session is
+   typically running at `gpt-5.5/xhigh`. If the worker runs inline, every
+   phase pays your session's `xhigh` cost. Spawning a child with
+   `CODEX_LONGTASK_REASONING=$resolved_effort` (from the plan frontmatter)
+   makes the worker run at `medium` / `high` per the spec's policy.
+2. **Reward-hacking resistance.** A worker that runs inline can see the
+   verifier prompt the conductor will use next. A worker spawned as a
+   fresh child cannot. This is what makes the "worker writes / verifier
+   judges independently" contract real, not theatre.
+
+The dispatch path is `codex/lib/codex-wrapper.sh` (a thin stall-only
+wrapper around `codex exec --json [--output-schema <schema>] [-o
+<output_json>]`). The conductor prompt
+(`codex/prompts/codex-longtask-code.md`) carries the literal bash
+templates the conductor session executes — see § "Phase loop" /
+"Dispatch contract" there. If you see the conductor reading
+`worker.md` and starting to write code itself instead of running
+`bash codex/lib/codex-wrapper.sh ... "{Pn}-r{N}-worker"`, that is the
+bug — point the conductor back at the dispatch contract.
+
 ## Phase Loop
 
 For each phase in manifest order:
@@ -275,19 +302,34 @@ For each phase in manifest order:
 0. **Phase preflight** (see above): on `FATAL_PLAN_DEFECT`, exit before
    touching the codex worker. On `EXPECTED_RED` / `UNEXPECTED_PASS` /
    `INCONCLUSIVE` / `SKIPPED`, proceed to step 1.
-1. Run worker prompt (`codex/prompts/worker.md`).
-2. Compute changed paths via git and enforce:
+1. **Resolve worker reasoning effort** from the plan:
+   `resolved_effort = phase.reasoning_effort or default_reasoning_effort or 'medium'`.
+   Unknown value → `BLOCKED_SPEC`.
+2. **Spawn worker** as `codex exec` child via the wrapper, passing
+   `CODEX_LONGTASK_REASONING=$resolved_effort`. The worker prompt is
+   `codex/prompts/worker.md` (substituted with the phase block). DO NOT
+   run the worker inline in the conductor session.
+3. Compute changed paths via git **in the conductor session** and enforce:
    - inside `file_scope`
    - outside `do_not_touch`
-3. Run verifier prompt (`codex/prompts/verifier.md`) with schema-bound output.
-4. Validate verifier JSON:
+4. **Spawn verifier** as `codex exec` child via the wrapper, passing
+   `CODEX_LONGTASK_REASONING=$resolved_effort` and the schema path
+   `shared/schemas/verifier-result.schema.json` (positional arg 3) +
+   output JSON path (positional arg 4). The verifier prompt is
+   `codex/prompts/verifier.md`. DO NOT run the verifier inline.
+5. Validate verifier JSON in the conductor session:
    - schema-valid
    - `verify_cmd_exit == 0`
    - `dod_results` all pass
    - no reward-hacking signals
-5. On FAIL, run retry prompt (`codex/prompts/retry-worker.md`) up to
-   `max_retry_rounds`.
-6. On PASS, create phase commit and append commit-chain evidence.
+6. On FAIL: reset worktree, auto-bump `resolved_effort` one tier
+   (`medium → high → xhigh`) **unless** the phase pinned `reasoning_effort`
+   explicitly, then spawn a retry-worker child via the wrapper
+   (`codex/prompts/retry-worker.md` prepended to `worker.md`, carrying
+   the prior verdict JSON). Up to `max_retry_rounds`.
+7. On PASS: conductor session runs
+   `git add -A && git commit -m "[longtask:<spec>:{Pn}] <one-liner>"`
+   and appends commit-chain evidence to the exit state.
 
 ## Exit-State Contract
 

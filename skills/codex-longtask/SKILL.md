@@ -104,6 +104,18 @@ Skip for quick questions, small single-file edits, reviews, or brainstorming.
   document, plan-integrity verdict, state JSON, changed file list, diff stat,
   verifier report, blocked report, final alignment report, and final commit
   list. It does not read full implementation files during normal execution.
+- **Subagent dispatch is `codex exec` via `lib/codex-wrapper.sh`, NEVER inline.**
+  Every worker / verifier / retry-worker / lens / mid-summary / consensus /
+  judgment turn is a separate `codex exec` child process with its own
+  context, its own model, and its own `model_reasoning_effort` (resolved
+  per phase from `default_reasoning_effort` + per-phase `reasoning_effort`
+  — see [conductor.md](../../codex/prompts/conductor.md) § "Model Budget").
+  If the parent session reads `prompts/worker.md` and starts writing code
+  itself instead of running `bash codex/lib/codex-wrapper.sh ... worker`,
+  that is the bug: every phase ends up paying the parent's
+  reasoning-effort (typically `xhigh`) and the worker→verifier isolation
+  collapses. The conductor prompt carries literal bash templates for each
+  dispatch step — follow them.
 - **Native subagents do the heavy work.** Each worker/verifier starts fresh.
 - **Worker and verifier are separated.** The verifier gets no worker reasoning,
   only the execution spec, changed files, diff, and verification output.

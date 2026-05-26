@@ -194,50 +194,176 @@ failure surfacing if the choice turns out to be wrong.
 
 For each phase in the (possibly auto-promoted) manifest's plan, in order:
 
-0. **Phase preflight** (added in v0.4.1; full contract in
-   `skills/codex-longtask-code/SKILL.md` § "Phase Preflight"). Run the phase
-   `verify_cmd` against current HEAD (baseline for this phase) from repo root
-   with a 90-second wall-clock budget. Reset the working tree afterwards
-   (`git reset --hard <pre_head> && git clean -fd -e .longtask/`) regardless
-   of outcome.
+### 0. Phase preflight
 
-   Skip preflight entirely (record `result: SKIPPED`, proceed to worker)
-   when: phase frontmatter `preflight_skip: true`; `verify_cmd` contains the
-   literal `ssh ` token; or `phase_runs_on` is set to anything other than
-   `local`.
+(Added in v0.4.1; full contract in
+`skills/codex-longtask-code/SKILL.md` § "Phase Preflight".) Run the phase
+`verify_cmd` against current HEAD (baseline for this phase) from repo root
+with a 90-second wall-clock budget. Reset the working tree afterwards
+(`git reset --hard <pre_head> && git clean -fd -e .longtask/`) regardless
+of outcome.
 
-   Classify the captured `(exit_code, stderr)` per the fatal signal taxonomy:
+Skip preflight entirely (record `result: SKIPPED`, proceed to worker)
+when: phase frontmatter `preflight_skip: true`; `verify_cmd` contains the
+literal `ssh ` token; or `phase_runs_on` is set to anything other than
+`local`.
 
-   - `FATAL_PLAN_DEFECT` (any of: exit 127, `command not found`, `error TS5083:`,
-     `npm ERR! ENOENT.*package\.json`, `Cannot connect to the Docker daemon`,
-     shell `syntax error` with exit ∈ {1,2}, `Host key verification failed`
-     OR `Connection refused`, or `error: unrecognized arguments` for an
-     argument that appears literally in the verify_cmd source) → STOP the
-     phase loop, write `codex-code-exit.json` with
-     `blocked_reason: BLOCKED_PLAN_DEFECT`, do NOT dispatch the worker.
-   - `EXPECTED_RED` (non-zero exit, no fatal signal) → dispatch worker.
-   - `UNEXPECTED_PASS` (exit 0 on baseline) → log to
-     `phase_preflight_results[]`, dispatch worker; the verifier still
-     adjudicates.
-   - `INCONCLUSIVE` (exit 124 / timeout) → log warning, dispatch worker.
+Classify the captured `(exit_code, stderr)` per the fatal signal taxonomy:
 
-   Persist evidence to
-   `.longtask/state/{spec_basename}/phase-preflight-{Pn}.json` with shape:
-   `{phase, ran_at, duration_seconds, result, exit_code,
-   fatal_signals_matched, sub_reason, verify_cmd_text, stderr_tail,
-   stdout_tail, pre_head_sha, post_reset_porcelain_empty}`.
+- `FATAL_PLAN_DEFECT` (any of: exit 127, `command not found`, `error TS5083:`,
+  `npm ERR! ENOENT.*package\.json`, `Cannot connect to the Docker daemon`,
+  shell `syntax error` with exit ∈ {1,2}, `Host key verification failed`
+  OR `Connection refused`, or `error: unrecognized arguments` for an
+  argument that appears literally in the verify_cmd source) → STOP the
+  phase loop, write `codex-code-exit.json` with
+  `blocked_reason: BLOCKED_PLAN_DEFECT`, do NOT dispatch the worker.
+- `EXPECTED_RED` (non-zero exit, no fatal signal) → dispatch worker.
+- `UNEXPECTED_PASS` (exit 0 on baseline) → log to
+  `phase_preflight_results[]`, dispatch worker; the verifier still
+  adjudicates.
+- `INCONCLUSIVE` (exit 124 / timeout) → log warning, dispatch worker.
 
-1. Dispatch worker (`worker.md`).
-2. Apply git scope checks (`file_scope` and `do_not_touch`).
-3. Dispatch verifier (`verifier.md`) and parse schema-bound JSON.
-4. PASS only when verifier contract passes:
-   - `verdict == "PASS"`
-   - `verify_cmd_exit == 0`
-   - all DoD bullets pass
-   - no reward-hacking signals
-5. On failure, dispatch retry worker (`retry-worker.md`) until
-   `max_retry_rounds`.
-6. Commit on PASS and append commit-chain evidence.
+Persist evidence to
+`.longtask/state/{spec_basename}/phase-preflight-{Pn}.json` with shape:
+`{phase, ran_at, duration_seconds, result, exit_code,
+fatal_signals_matched, sub_reason, verify_cmd_text, stderr_tail,
+stdout_tail, pre_head_sha, post_reset_porcelain_empty}`.
+
+### Dispatch contract — MUST use `codex exec` children, MUST NOT run inline
+
+You are the conductor session. The user's interactive codex session is
+typically running at `gpt-5.5/xhigh`. **You do NOT execute the worker /
+verifier / retry-worker yourself.** Every worker, verifier, and retry-worker
+turn is a separate, fresh `codex exec` child process spawned via
+`codex/lib/codex-wrapper.sh`. Inheriting your parent's `xhigh` setting for
+all phases is exactly the bug this contract prevents — drop down per phase
+per the resolved `reasoning_effort`.
+
+Before dispatching the first child, **resolve the reasoning effort for this
+phase**:
+
+```
+resolved_effort = phase.reasoning_effort
+                  or manifest.implementation_plan.default_reasoning_effort
+                  or 'medium'        # hard fallback if both absent
+```
+
+(Validate against `medium | high | xhigh`; unknown value → `BLOCKED_SPEC`.)
+For retry rounds, auto-bump one tier (`medium → high → xhigh`) **unless**
+the phase pinned `reasoning_effort` explicitly (then the pin disables
+auto-bump).
+
+### 1. Worker dispatch (one fresh `codex exec` child)
+
+Write the assembled worker prompt (substituted `codex/prompts/worker.md` +
+phase block) to a temp file, then invoke the wrapper. Pass the resolved
+reasoning effort via `CODEX_LONGTASK_REASONING` env (the wrapper reads it
+in line 40):
+
+```bash
+PROMPT=$(mktemp /tmp/longtask-worker-{Pn}-r{N}.XXXX.txt)
+cat > "$PROMPT" <<'PROMPTEOF'
+<assembled worker prompt with substitutions applied>
+PROMPTEOF
+
+CODEX_LONGTASK_REASONING="$resolved_effort" \
+CODEX_LONGTASK_MODEL=gpt-5.5 \
+  bash codex/lib/codex-wrapper.sh "$PROMPT" "{Pn}-r{N}-worker" \
+  2>&1 | tee /tmp/longtask-worker-{Pn}-r{N}.log
+WORKER_EXIT=${PIPESTATUS[0]}
+```
+
+This is a **separate process**, not inline reasoning in your own context.
+It is the load-bearing point of the cross-context split: the worker child
+sees only the worker prompt, gets a clean context, and pays the
+`resolved_effort` cost (not your conductor session's `xhigh` cost).
+
+### 2. Scope gate (you, not a child)
+
+After the worker child returns, you run scope checks in your own context:
+
+```bash
+git status --porcelain
+git diff --name-only HEAD
+```
+
+Any path outside `phase.file_scope` or inside `phase.do_not_touch` →
+`BLOCKED_SCOPE`, reset worktree (`git reset --hard HEAD && git clean -fd
+-e .longtask/`), record evidence, move to next phase or stop per policy.
+
+### 3. Verifier dispatch (one fresh `codex exec` child with schema)
+
+Write the verifier prompt to a temp file. Verifier MUST be invoked with
+`--output-schema` so the verdict is parseable JSON by construction. The
+wrapper accepts the schema path as positional arg 3 and the output JSON
+path as positional arg 4:
+
+```bash
+B_PROMPT=$(mktemp /tmp/longtask-verifier-{Pn}-r{N}.XXXX.txt)
+VERDICT=.longtask/reports/{spec_basename}/{Pn}-r{N}-verdict.json
+mkdir -p "$(dirname "$VERDICT")"
+cat > "$B_PROMPT" <<'PROMPTEOF'
+<assembled verifier prompt — known-traps reference + codex/prompts/verifier.md with substitutions>
+PROMPTEOF
+
+CODEX_LONGTASK_REASONING="$resolved_effort" \
+CODEX_LONGTASK_MODEL=gpt-5.5 \
+  bash codex/lib/codex-wrapper.sh \
+  "$B_PROMPT" "{Pn}-r{N}-verifier" \
+  shared/schemas/verifier-result.schema.json \
+  "$VERDICT" \
+  2>&1 | tee /tmp/longtask-verifier-{Pn}-r{N}.log
+B_EXIT=${PIPESTATUS[0]}
+```
+
+Verifier reasoning effort matches the worker's `resolved_effort` for this
+phase (so the judge has comparable reasoning capacity to the actor). If
+the verifier JSON itself comes back inconsistent, bump verifier one tier
+for the next round.
+
+### 4. Schema + main-line review (you read JSON only)
+
+Parse and validate `$VERDICT` against
+`shared/schemas/verifier-result.schema.json`. PASS only when all hold:
+
+- schema validates
+- `verdict == "PASS"`
+- `verify_cmd_exit == 0`
+- every `dod_results[].passed == true`
+- `reward_hacking_signals == []`
+- `root_cause_hint` non-vague on FAIL (PASS may be `"n/a"`)
+
+Any inconsistency (e.g. `verdict == "PASS"` but a dod_results entry is
+false) → `VERIFIER_SCHEMA_INVALID`, do not commit.
+
+### 5. Retry dispatch (one fresh child per retry round)
+
+On FAIL with `rounds_used < max_retry_rounds`: reset worktree, auto-bump
+`resolved_effort` one tier (unless phase pinned), assemble retry prompt
+(`codex/prompts/retry-worker.md` prepended to `worker.md`, carrying the
+prior verdict JSON verbatim + prior changed_files), and dispatch the same
+way as step 1.
+
+### 6. Commit on PASS
+
+After main-line review passes:
+
+```bash
+git add -A
+git commit -m "[longtask:{spec_basename}:{Pn}] <phase.goals one-liner>"
+```
+
+Capture commit sha into the manifest's phase result map. Move to next
+phase.
+
+### Anti-pattern to avoid
+
+Do NOT read the worker / verifier / retry prompts and execute them in your
+own context. Your context is the conductor — your job is `codex exec`
+dispatch, JSON parsing, scope gate, commit. Running the phase work inline
+defeats the cross-context isolation that prevents reward-hacking and
+keeps execution at the resolved (cheaper) `reasoning_effort` instead of
+your parent session's `xhigh`.
 
 ## Exit-state expectations
 

@@ -80,6 +80,32 @@ lenses, this is `12 × cross_rounds + 2` per stage: cross_rounds=1/2/3 →
 28 / 52 / 76. Note the shape is sequenced *within* a round (Phase 1-4) but
 *parallel across lenses within each Phase*.
 
+## Where details live (load-bearing — read before writing specs/plans)
+
+| Artifact | What lives here | What does NOT live here |
+|---|---|---|
+| **Source spec** (you write) | Product intent, REQ-*, success criteria, business constraints | Implementation details, architecture decisions (those are derived in roundtable) |
+| **Enhanced spec** (consensus editor writes) | Architecture decisions, formulas, threshold tables, schema shapes, named invariants, non-obvious constraints, REQ-E-* clarifications, out-of-scope items with rationale | Phase decomposition, code, test snippets |
+| **Implementation plan** (plan-writer writes) | Phase decomposition (P1, P2, ...) — for each phase: `goals`, `file_scope`, `do_not_touch`, `verify_cmd`, `verify_passes_when`, `dod`, `source_requirements`, `max_retry_rounds`, optional `model_tier` / `reasoning_effort`; Source Requirements table; Alignment Matrix; Final E2E2 contract | Code snippets, test code, TDD micro-steps ("Step 1: write failing test..."), per-file change recipes, formulas, threshold tables, architecture diagrams, roundtable consensus dumps — **all these belong in the enhanced spec or are derived at runtime by the worker** |
+| **Phase commit + worker output** | Real code, real tests, real diffs | — |
+| **Verifier JSON** | PASS/FAIL + dod_results + reward_hacking_signals + verify_cmd output | — |
+
+The plan is a **thin executable contract**, not a code draft. Detail that
+already lives in the enhanced spec MUST NOT be copied into the plan.
+Implementation details that the worker would derive correctly from a
+clear contract MUST NOT be pre-decided in the plan. Worker input already
+includes the plan as context AND the worker emits code as output — any
+code in the plan is paid twice (input + output tokens for the same
+content). TDD rhythm is enforced by the worker's TDD sub-skill, not by
+plan-writer's micro-step lists.
+
+**Line budget** (enforced by `plan-writer.md` / `plan-consensus-editor.md`):
+- Per phase block: target 80-150 lines, hard cap 200 lines.
+- Total plan: target ≤ 720 lines, hard cap 1000 lines regardless of
+  phase count.
+- Exceeding the hard cap → `BLOCKED_PLAN_REPAIR`: route detail to
+  enhanced spec or split phases. Do not weaken the budget.
+
 ## Spec schema (REQUIRED — orchestrator validates at Step 1 or Step 4)
 
 > **Where v2 frontmatter validation happens** — this matters for understanding

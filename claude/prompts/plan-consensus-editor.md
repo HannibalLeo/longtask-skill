@@ -122,6 +122,38 @@ have already been compressed into these.
    path, etc.) or accepted as-is with a recorded reason.
 10. **Round-state precedence**: the FINAL round-state's positions take
     precedence over earlier rounds.
+11. **Plan thinness — load-bearing.** The plan is an executable contract
+    for the worker, NOT a place to inline roundtable consensus,
+    implementation detail, or code drafts. When applying round-state
+    edits, classify each proposed addition:
+    - **Phase-contract change** (file_scope / do_not_touch / verify_cmd /
+      verify_passes_when / dod / source_requirements / max_retry_rounds /
+      model_tier / reasoning_effort / phase split / phase insertion) →
+      apply IN PLAN.
+    - **Load-bearing architecture decision** (threshold tables, formulas,
+      RAF/coalescing rules, z-stack, pointer-events policy, schema
+      shape, color/state mapping, named patterns the worker must respect
+      across phases) → route to `{enhanced_spec_path}` under an
+      "Architecture decisions (from roundtable)" section (the
+      spec-consensus-editor already owns enhanced-spec mutations; this
+      editor records the routing intent in plan-update §
+      `routed_to_enhanced_spec`). The next plan-integrity round will
+      verify the enhanced spec carries the additions.
+    - **Implementation detail** (code snippet, test snippet, per-file
+      change recipe, TDD micro-steps "Step 1 / Step 2 / Step 3") →
+      DROP. Do not insert into plan, do not propose to enhanced spec.
+      The worker's TDD sub-skill owns rhythm; the worker owns code.
+      Record dropped items in plan-update §
+      `dropped_implementation_drafts` for audit, with a one-line reason
+      per item ("redundant with TDD skill" / "worker decision" /
+      "load-bearing constraint → already in enhanced spec REQ-NN").
+12. **Plan line budget.** After rewriting, the plan SHOULD be ≤ 1000
+    lines total (≤ 200 lines per phase block, target ≤ 150). If the
+    pre-rewrite plan was over budget AND the round-states did not give
+    you enough signal to compress (e.g., they kept adding code
+    snippets), STOP and emit `BLOCKED_PLAN_REPAIR` with a one-paragraph
+    explanation citing which sections inflated the plan. Do not weaken
+    the budget by mechanical condensation that drops requirements.
 
 ## Required Artifacts
 

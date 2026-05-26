@@ -104,6 +104,32 @@ Must be complete enough for the plan writer to use without the roundtable
 transcript. Preserve all REQ-* anchors from the source spec. Add new
 requirements with anchors of the form `REQ-E-NNN` (E = enhanced).
 
+**The enhanced spec is the authoritative home for load-bearing
+architecture decisions** — anything the worker must respect across phases
+(threshold tables, formulas, schema shapes, RAF / coalescing rules,
+z-stack ordering, pointer-events policy, color/state mapping, named
+patterns, named invariants like `AiEvidenceOverlay.vue ≤ 600 lines`).
+The plan-writer reads these for context but does NOT copy them into the
+plan. Plan-consensus-editor may route additional architecture decisions
+to this spec later via plan-update §`routed_to_enhanced_spec`; this
+editor's first-round output should already contain everything the
+plan-stage roundtable surfaced.
+
+Recommended top-level sections (in addition to the requirements list):
+
+- `## Requirements` — REQ-* and REQ-E-* with stable anchors
+- `## Architecture decisions` — every load-bearing decision the worker
+  must honor across phases, each pinned to one or more REQ-* anchors
+- `## Non-obvious constraints / invariants` — DPR formulas, thresholds,
+  field clusters, "X must never exceed Y" rules
+- `## Out of scope` — explicit non-goals with rationale
+- `## Source-spec alignment` — proof no REQ was lost in enhancement
+
+Code-level detail (test snippets, function bodies, per-file change
+recipes, TDD micro-steps) does NOT belong here either — it belongs
+nowhere in the spec/plan chain. The worker writes it; the verifier
+checks it.
+
 ### 2. Spec update document
 Write to: `{spec_update_output_path}`
 

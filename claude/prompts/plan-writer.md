@@ -132,6 +132,89 @@ fills in placeholder text to "make it complete".
 
 ---
 
+## Plan thinness contract (load-bearing — read before writing)
+
+The plan is a **thin executable contract**, not a re-statement of the spec
+and not a code draft. Detail that already lives in the source / enhanced
+spec MUST NOT be copied into the plan. Implementation details that the
+worker would derive correctly from a clear contract MUST NOT be
+pre-decided in the plan.
+
+Why thin: worker context already includes the plan as input AND emits
+code as output. Any code, test snippet, or step-by-step micro-instruction
+inside the plan is paid twice — plan-writer wrote it, worker re-types it.
+TDD rhythm is enforced by the worker's TDD sub-skill (`superpowers:tdd`
+or the project's `/tdd` skill); the plan does not need to say "Step 1:
+write failing test, Step 2: run pytest, Step 3: write implementation."
+
+### Forbidden in the plan (each occurrence is a defect)
+
+- Code snippets in any language beyond a bare function / method / type
+  signature (no body, no decorators). Examples that are forbidden:
+  - Full vitest / pytest test bodies with `describe(...) / it(...) /
+    expect(...)` or `def test_foo(): assert ...`
+  - Implementation blocks (`function foo() { ... }` with body, `def foo:
+    ...` with body)
+  - Imports, fixtures, configuration scaffolds
+- TDD micro-steps inside a phase / task block:
+  "Step 1: write failing test", "Step 2: run X, should FAIL",
+  "Step 3: write impl", "Step 4: run X, should PASS". The worker's TDD
+  sub-skill owns this rhythm.
+- Per-file change recipes ("change line N of file F to ...", "rename X to
+  Y in file F"). State the phase's outcome and let the worker plan the
+  edits.
+- Threshold tables (`LOD = 2 / 8 / 24 px`), formulas
+  (`lineWidth = clamp(width, 1.5/dpr, ...)`), field-by-field schemas
+  (e.g. "drawSpec has `fill / stroke / dash / hatching / insetStroke`")
+  — these are **load-bearing architecture decisions**, they belong in the
+  enhanced spec where they are addressable by REQ-* and visible to every
+  downstream consumer (worker, verifier, final-alignment-review, future
+  sprints).
+- Architecture diagrams, z-stack ordering specs, RAF coalescing rules,
+  pointer-events policies — same reason: they are spec-level invariants.
+- Roundtable consensus summaries pasted verbatim. Roundtable output
+  belongs in the enhanced spec (architecture decisions section) or in
+  spec-update.md (clarifications). Plan-writer reads them as context but
+  does NOT copy them into the plan.
+
+### Allowed (and required) in the plan
+
+- Phase decomposition (`P1`, `P2`, ... headings) with **a one-sentence
+  goal each**.
+- Per-phase contract: `source_requirements`, `goals`, `file_scope`,
+  `do_not_touch`, `verify_cmd`, `verify_passes_when`,
+  `max_retry_rounds`, `dod`, optional `model_tier`, optional
+  `reasoning_effort`.
+- Source Requirements table (REQ-* IDs → one-line statement → spec
+  section anchor → enhanced-spec section anchor).
+- Alignment matrix (REQ-* → enhanced REQ-* → phase → DoD-bullet ID →
+  evidence type → status).
+- Final E2E2 + screenshot report contract (one paragraph).
+- Optional, per phase: an `approach_hint` block — **max ~15 lines, prose
+  only, no code** — for non-obvious algorithmic/refactor shapes the DoD
+  cannot convey alone (e.g. "use viewport-bounded offscreen composite
+  only when stage2/stage3 overlap is detected; default path is direct
+  fill"). Default is to omit `approach_hint` entirely; reach for it only
+  when the spec genuinely doesn't pin the approach.
+
+### Line budget
+
+- Per phase block: target 80-150 lines, hard cap 200 lines.
+  `file_scope` / `do_not_touch` lists do not count.
+- Total plan: target 6×120 = 720 lines for a 6-phase project; hard cap
+  1000 lines regardless of phase count.
+- If a phase needs more than 200 lines to specify, the cause is almost
+  always one of:
+  1. Roundtable consensus is leaking into the plan → route to enhanced
+     spec.
+  2. Phase scope is too wide → split into two phases.
+  3. Implementation details are being pre-decided → strip; trust the
+     worker.
+
+Exceeding the hard cap is a `BLOCKED_PLAN_REPAIR` signal: rewrite the
+plan against this contract, push detail to enhanced spec or split
+phases. Do not weaken the budget.
+
 ## No-Loss Rules
 
 1. Preserve every concrete source-spec and enhanced-spec requirement. Assign
@@ -275,7 +358,7 @@ default_reasoning_effort: medium     # medium | high | xhigh — codex-longtask 
 
 ```yaml
 source_requirements: [REQ-001]
-goals: one sentence
+goals: one sentence describing the phase outcome
 file_scope: [path/**]
 do_not_touch: [.env*, data/**]
 verify_cmd: "command"
@@ -284,7 +367,12 @@ max_retry_rounds: 3
 # model_tier: opus         # optional — overrides default_model_tier (claude flow)
 # reasoning_effort: high   # optional — overrides default_reasoning_effort (codex flow)
 dod:
-  - "Concrete criterion"
+  - "Concrete observable criterion (file:line, test name, HTTP response shape)"
+# approach_hint: |          # optional escape valve — prose only, ≤ 15 lines, NO code
+#   When the DoD genuinely cannot pin a non-obvious algorithmic shape, sketch
+#   the SHAPE in 1-3 short sentences. Default: omit this field entirely.
+#   Example: "Use viewport-bounded offscreen composite only when stage2/stage3
+#   patches overlap; default path is direct fill on main canvas."
 ```
 
 Phase notes, if needed.

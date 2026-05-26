@@ -126,6 +126,33 @@ Map these findings to violation codes:
 - `VIOLATION_CROSS_PHASE_COORDINATION`
 - `VIOLATION_FINAL_E2E2_IN_PHASE`
 
+### Plan thinness violations (added in v0.4 — see plan-writer.md § "Plan thinness contract")
+
+The plan is a thin executable contract. Detail that already lives in the
+enhanced spec or is the worker's job to derive MUST NOT be inlined. Check
+every phase block for these patterns; each match is a separate violation
+row in the output `findings[]`:
+
+| Code | Trigger |
+|---|---|
+| `VIOLATION_INLINE_CODE_SNIPPET` | A code block (```ts / ```py / ```js / ```rust / ```go / ```sh) longer than 5 lines, OR containing a function/method body (lines after a `function X(...) {` / `def x():` / `=>` `{` opener), OR containing test code (`describe(...)`, `it(...)`, `expect(...)`, `assert ...`, `pytest.raises`, `Mock`, fixtures) — embedded in a phase block. Bare API / function / type signatures (no body) are allowed. |
+| `VIOLATION_INLINE_TDD_MICROSTEPS` | Phase block contains numbered or bulleted micro-steps that walk through TDD rhythm: "Step 1: write failing test", "Step 2: run X, should FAIL", "Step 3: write impl", "Step 4: run X, should PASS", or any sequence of `- [ ]` checkboxes that prescribe red/green/refactor cycles. The worker's TDD sub-skill owns this rhythm; plan should not duplicate. |
+| `VIOLATION_INLINE_THRESHOLD_FORMULA` | Phase block contains threshold tables (`LOD = 2 / 8 / 24 px`), formulas (`lineWidth = clamp(...)`), or field-by-field schemas (`drawSpec: { fill, stroke, dash, ... }`). These are load-bearing — they belong in the enhanced spec where they have a REQ-* anchor visible to every downstream consumer. |
+| `VIOLATION_INLINE_ARCHITECTURE_DECISION` | Phase block contains roundtable consensus dumps, z-stack ordering specs, RAF/coalescing rules, pointer-events policies, or named patterns the worker must respect across phases. Same routing as above: enhanced spec, not plan. |
+| `VIOLATION_INLINE_PER_FILE_RECIPE` | Phase block contains per-file change recipes: "change line N of file F to X", "rename A to B in file F", "add import Y to file F". State the phase outcome (DoD bullet) and let the worker plan the edits. |
+| `VIOLATION_PHASE_BLOCK_OVER_BUDGET` | Phase block exceeds 200 lines (excluding `file_scope` / `do_not_touch` lists). Hard fail; route content to enhanced spec or split phase. |
+| `VIOLATION_PLAN_OVER_BUDGET` | Total plan exceeds 1000 lines. Hard fail; the plan is paying twice for content the worker will re-derive. Compress to enhanced spec. |
+
+Allowed exception: a per-phase `approach_hint:` block — max 15 lines,
+prose only, no code — for non-obvious algorithmic / refactor shapes the
+DoD cannot convey. Default is to omit `approach_hint` entirely. Use it
+only when the spec genuinely doesn't pin the approach.
+
+Any thinness violation → FAIL (`BLOCKED_PLAN_REPAIR`) with the violation
+codes attached and a recommended fix per row (e.g. "route LOD threshold
+table to enhanced spec § Architecture Decisions; strip from plan §
+Phase 1").
+
 ## Reward-hacking failure patterns — check all of these
 
 The following plan-layer reward-hacking patterns must each be explicitly checked

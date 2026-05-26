@@ -1,11 +1,13 @@
 # Longtask Final Alignment Review Prompt
 
-<!-- HYBRID ROUTING NOTE — 强制 dual mode (决议 #2 例外条款)
+<!-- HYBRID ROUTING NOTE — 强制 dual (last-line-of-defense gate, v0.4)
 Final alignment is the last line of defense before ship.
 
-**This gate enforces MANDATORY DUAL mode regardless of the spec's
-`roundtable_mode` setting.** Even if the spec sets `roundtable_mode:
-claude_only`, final-alignment-review ALWAYS runs both reviewers.
+**This gate enforces MANDATORY DUAL regardless of any roundtable outcome.**
+v0.4 note: roundtable cross-rounds already digest codex+claude per round, but
+final-alignment-review is a separate independent gate that runs once at
+end-of-pipeline. It is intentionally redundant with Step 5 plan-integrity
+hybrid review.
 
 - **Primary reviewer**: Claude opus, invoked via Agent tool in the main
   orchestrator session.

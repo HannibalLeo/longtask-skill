@@ -134,7 +134,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^P[0-9]+$"
+            "pattern": "^P[0-9]+[a-z]?$"
           }
         },
         "violation_codes": {
@@ -375,6 +375,11 @@
       "type": "string",
       "pattern": "^[a-f0-9]{64}$"
     },
+    "git_sha": {
+      "type": "string",
+      "description": "Git commit SHA. Accepts either sha1 (40 hex chars, default git format) or sha256 (64 hex chars, sha256-format repositories). v0.4.0 fix: previously this was incorrectly constrained to sha256 only.",
+      "pattern": "^[a-f0-9]{40}$|^[a-f0-9]{64}$"
+    },
     "repo_relative_path": {
       "type": "string",
       "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(^|/)\\.\\.(?:/|$)).+"
@@ -473,10 +478,10 @@
           "$ref": "#/$defs/repo_relative_path"
         },
         "repo_head_sha_at_plan": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/git_sha"
         },
         "base_sha_before_phases_expected": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/git_sha"
         }
       }
     },
@@ -510,7 +515,8 @@
         "VIOLATION_MISSING_VERIFY_CMD",
         "VIOLATION_INTERACTIVE_INPUT",
         "VIOLATION_CROSS_PHASE_COORDINATION",
-        "VIOLATION_FINAL_E2E2_IN_PHASE"
+        "VIOLATION_FINAL_E2E2_IN_PHASE",
+        "VIOLATION_SSH_OR_NETWORK_EGRESS_IN_PHASE"
       ]
     },
     "repo_path_safety": {
@@ -550,10 +556,10 @@
           "type": "string"
         },
         "repo_head_sha_at_plan": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/git_sha"
         },
         "base_sha_before_phases_expected": {
-          "$ref": "#/$defs/sha256"
+          "$ref": "#/$defs/git_sha"
         }
       }
     },
@@ -648,7 +654,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "pattern": "^P[0-9]+$"
+            "pattern": "^P[0-9]+[a-z]?$"
           }
         },
         "preserved_blocking_checks": {

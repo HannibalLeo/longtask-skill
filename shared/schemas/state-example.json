@@ -1,22 +1,52 @@
 {
-  "_comment": "Reference example for .longtask/state/{spec_basename}.json. See SKILL.md '## State file (v2 schema)' for the field table; this file is the long-form example previously embedded in SKILL.md.",
+  "_comment": "Reference example for .longtask/state/{spec_basename}.json. See SKILL.md '## State file (v2 schema)' for the field table; this file is the long-form example previously embedded in SKILL.md. v0.4 cross-rounds layout.",
 
-  "mode": "claude-hybrid",
+  "mode": "claude-cross-rounds",
   "spec_path": "...",
   "spec_sha256": "...",
   "input_path": "<source_spec_path>",
   "input_sha256": "<source_spec_sha256>",
   "input_shape": "source_spec | hybrid | plan_with_source | self_contained_plan",
   "classification_path": ".longtask/state/{spec_basename}/classification.json",
-  "enhanced_spec_path": ".longtask/state/{spec_basename}/enhanced-spec.md",
+  "spec_roundtable_skipped_reason": null,
+
+  "spec_cross_round_codex_mid_summary_paths": [
+    ".longtask/reports/{spec}/rounds/spec-round-1-codex-mid-summary.md",
+    ".longtask/reports/{spec}/rounds/spec-round-2-codex-mid-summary.md"
+  ],
+  "spec_cross_round_state_paths": [
+    ".longtask/reports/{spec}/rounds/spec-round-1-state.md",
+    ".longtask/reports/{spec}/rounds/spec-round-2-state.md"
+  ],
+  "spec_consensus_editor_path": ".longtask/state/{spec_basename}/spec-consensus-editor.json",
+  "enhanced_spec_path": ".longtask/specs/{spec_basename}-enhanced-spec.md",
   "enhanced_spec_sha256": "...",
-  "spec_update_path": ".longtask/state/{spec_basename}/spec-update.md",
-  "preflight_skip_path": null,
-  "spec_round_state_paths": [".longtask/state/{spec_basename}/spec-round-1.json", "..."],
-  "implementation_plan_path": ".longtask/state/{spec_basename}/plan.md",
+  "spec_update_path": ".longtask/reports/{spec}/spec-update.md",
+  "alignment_matrix_path": ".longtask/state/{spec_basename}/alignment-matrix.json",
+  "spec_cross_rounds_final_review_path": ".longtask/state/{spec_basename}/spec-cross-rounds-final-review.json",
+  "spec_cross_rounds_final_review_verdict": "PASS_CLEAN | PASS_WITH_RESIDUAL_RISKS | NEEDS_REVISION",
+  "spec_cross_rounds_residual_risks": [
+    {
+      "id": "spec-r2-blindspot-3",
+      "source_round": "round-2",
+      "description": "...",
+      "severity": "low | medium | high"
+    }
+  ],
+
+  "implementation_plan_path": ".longtask/plans/{spec_basename}-implementation-plan.md",
   "implementation_plan_sha256": "...",
-  "plan_round_state_paths": [".longtask/state/{spec_basename}/plan-round-1.json", "..."],
-  "implementation_plan_post_roundtable_sha256": "...",
+  "plan_cross_round_codex_mid_summary_paths": [
+    ".longtask/reports/{spec}/rounds/plan-round-1-codex-mid-summary.md"
+  ],
+  "plan_cross_round_state_paths": [
+    ".longtask/reports/{spec}/rounds/plan-round-1-state.md"
+  ],
+  "plan_consensus_editor_path": ".longtask/state/{spec_basename}/plan-consensus-editor.json",
+  "implementation_plan_post_cross_rounds_sha256": "...",
+  "plan_cross_rounds_final_review_path": ".longtask/state/{spec_basename}/plan-cross-rounds-final-review.json",
+  "plan_cross_rounds_final_review_verdict": "PASS_CLEAN | PASS_WITH_RESIDUAL_RISKS | NEEDS_REVISION",
+  "plan_cross_rounds_residual_risks": [],
   "plan_integrity_review_path": ".longtask/state/{spec_basename}/plan-integrity.json",
 
   "model_requests": [
@@ -43,9 +73,17 @@
   "claude_subagents": [
     {
       "id": "claude-<uuid>",
-      "role": "decision-review-primary",
+      "role": "spec-roundtable-round-1-phase-claude-engineering",
       "model": "opus",
-      "phase": "P3",
+      "phase": "spec-stage",
+      "start_at": "...",
+      "end_at": "..."
+    },
+    {
+      "id": "claude-<uuid>",
+      "role": "spec-cross-rounds-final-review",
+      "model": "opus-4.7-max",
+      "phase": "spec-stage",
       "start_at": "...",
       "end_at": "..."
     }
@@ -53,21 +91,25 @@
   "codex_subagents": [
     {
       "id": "codex-<thread_id>",
-      "role": "spec-classifier",
+      "role": "spec-roundtable-round-1-phase-codex-engineering",
+      "model": "gpt-5.5",
+      "reasoning": "xhigh",
+      "start_at": "...",
+      "end_at": "..."
+    },
+    {
+      "id": "codex-<thread_id>",
+      "role": "spec-codex-mid-summary-round-1",
       "model": "gpt-5.5",
       "reasoning": "xhigh",
       "start_at": "...",
       "end_at": "..."
     }
   ],
-  "hybrid_lens_assignments": {
+  "hybrid_gate_assignments": {
     "decision-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
     "plan-integrity-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
-    "final-alignment-review": ["claude-opus-primary", "codex-gpt5.5-secondary"],
-    "spec-roundtable.round-1.engineering": ["claude-opus-primary"],
-    "spec-roundtable.round-1.ceo-product": ["codex-gpt5.5-primary"],
-    "plan-roundtable.round-1.engineering": ["claude-opus-primary"],
-    "plan-roundtable.round-1.ceo-product": ["codex-gpt5.5-primary"]
+    "final-alignment-review": ["claude-opus-primary", "codex-gpt5.5-secondary"]
   },
 
   "phases": {

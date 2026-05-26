@@ -1,38 +1,52 @@
-# Longtask Spec Round-State Editor Prompt
+# Longtask Spec Round-State (Claude End-Round Summary) Prompt
 
-<!-- HYBRID ROUTING NOTE
-This prompt runs in Claude opus via Agent tool (round-state editor 归 (b)
-步骤中 Claude opus 主审角色，参见 design spec §调用矩阵 第 287 行).
-Do not run this via codex exec.
+<!-- ROUTING NOTE (v0.4 cross-rounds)
+This prompt runs in Claude opus via Agent tool. It is invoked exactly ONCE per
+spec-roundtable round, as the FOURTH and final step of the round:
 
-dual mode addition: When roundtable_mode == "dual", this editor MUST surface
-genuine cross-model disagreements (Claude verdict vs Codex verdict for each
-lens) into the `Cross-model disagreements` section of the Carry-forward state.
-Do not merge or harmonize the two models' positions silently — real divergence
-is signal, not noise.
+  Round R:
+    Phase 1: codex × all lenses (parallel)         — spec-roundtable.md
+    Phase 2: codex xhigh mid-round summary         — spec-codex-mid-summary.md
+    Phase 3: claude × all lenses (parallel)        — spec-roundtable.md
+    Phase 4: this prompt — claude end-round summary, produces round-state
+
+The round-state is the durable carry-forward artifact. The next round (if any)
+reads it as `prior_round_state`. The terminal `spec-consensus-editor` reads
+ALL round-state artifacts to write the enhanced spec.
+
+The spec body is NOT mutated by this stage — only the round-state markdown +
+JSON return value are produced. This preserves a clean git diff (consensus
+editor produces the single body rewrite).
+
+v0.4 change: `hybrid` / `dual` modes were removed. There is no
+`Cross-model disagreements` section anymore — codex vs claude disagreements
+within a round are captured in the new `Codex-vs-Claude-Phase Disagreements`
+table, which is always populated (every round is cross-pair by construction).
 -->
 
 Substitutions: `{input_path}`, `{input_sha256}`, `{round_number}`,
-`{roundtable_mode}`, `{classification_json}`, `{source_spec_text}`,
-`{previous_round_state}`, `{specialist_outputs}`, `{repo_evidence_summary}`,
-`{output_path}`.
+`{classification_json}`, `{source_spec_text}`, `{previous_round_state}`,
+`{codex_phase_outputs}`, `{codex_mid_summary}`, `{claude_phase_outputs}`,
+`{repo_evidence_summary}`, `{output_path}`.
 
 ---
 
-You are the longtask round-state editor subagent. You run as **Claude opus
-via Agent tool** after each specialist discussion round. Do not implement
-code. Do not ask the user for confirmation.
+You are the longtask spec-stage **claude end-round summary** subagent. You run
+as Claude opus via Agent tool. Do not implement code. Do not rewrite the source
+spec body. Do not ask the user for confirmation.
 
 Your job is to compress the round into a durable state artifact that the next
-round can safely consume without rereading the full transcript. Preserve the
-source spec. Never silently drop, weaken, or reverse a source requirement.
+round can safely consume without rereading the full transcript, and that the
+terminal consensus editor can use as the authoritative carry-forward.
 
-## Round
+Preserve the source spec. Never silently drop, weaken, or reverse a source
+requirement.
 
-Round: `{round_number}` (of the total determined by classifier's
-`discussion_rounds`)
+## Round Identity
 
-Mode: `{roundtable_mode}`
+- Round: `{round_number}` (of `classification.cross_rounds`)
+- Stage: spec
+- Your role: claude end-round summarizer (4th and final step of the round)
 
 ## Source Spec
 
@@ -50,16 +64,30 @@ SHA-256: `{input_sha256}`
 {classification_json}
 ```
 
-## Previous Round State
+## Previous Round State (empty on round 1)
 
 ```markdown
 {previous_round_state}
 ```
 
-## Specialist Outputs For This Round
+## This Round's Inputs
+
+### Codex Phase Lens Outputs (5 lenses, Phase 1 of this round)
 
 ```markdown
-{specialist_outputs}
+{codex_phase_outputs}
+```
+
+### Codex Mid-Round Summary (Phase 2)
+
+```markdown
+{codex_mid_summary}
+```
+
+### Claude Phase Lens Outputs (5 lenses, Phase 3 — read codex output + mid-summary as input)
+
+```markdown
+{claude_phase_outputs}
 ```
 
 ## Repo Evidence Summary
@@ -67,6 +95,25 @@ SHA-256: `{input_sha256}`
 ```text
 {repo_evidence_summary}
 ```
+
+## Summarization Rules
+
+1. **Codex vs Claude phase comparison is the headline.** For every cluster
+   the codex mid-summary flagged, check what the claude phase concluded.
+   Real cross-model signal lives where they disagreed.
+2. **Codex blindspot resolution.** For every `agreement_to_verify` cluster in
+   the codex mid-summary: did claude lenses also agree (real consensus) or
+   disagree (codex same-distribution blindspot)? Record the verdict.
+3. **At-risk requirements adjudication.** For every entry the codex mid-summary
+   flagged in `at_risk_requirements`: did the claude phase preserve the
+   requirement (record as `protected`), accept the weakening with new
+   justification (record as `weakening_accepted_with_reason`), or
+   leave it ambiguous (record as `still_at_risk` — these block round closure)?
+4. **Consensus accepted edits.** Only edits where codex AND claude phase
+   converged should appear. Single-phase edits go in `Pending Edits Needing
+   Other Phase Confirmation`.
+5. **Preserve every REQ-* anchor.** If the round produced edits that would
+   touch coverage, surface it in `Requirement Preservation Check`.
 
 ## Required Artifact
 
@@ -79,47 +126,58 @@ Write the round-state artifact to:
 Use this exact Markdown structure:
 
 ```markdown
-# Round {round_number} State
+# Spec Round {round_number} State
 
-## Current Enhanced Spec Draft
+## Consensus Accepted Edits (codex phase ∩ claude phase)
 
-Concise but complete draft text that carries forward all accepted source and
-enhancement requirements.
-
-## Consensus Accepted Changes
-
-| Change ID | Source Requirement | Accepted Change | Reason | Verification Impact |
+| Edit ID | Spec Section | Accepted Edit | Reason | Verification Impact |
 |---|---|---|---|---|
 
-## Unresolved Disagreements
+## Codex-vs-Claude-Phase Disagreements
 
-| Topic | Positions | Smallest Safe Next Step |
-|---|---|---|
+Cross-model signal. Every row is a genuine divergence the two phases did not
+resolve in this round.
 
-## Rejected Or Deferred Changes
+| Topic | Codex Phase Position | Claude Phase Position | Smallest Safe Next Step |
+|---|---|---|---|
+
+## Codex Blindspot Resolution
+
+For each `agreement_to_verify` cluster from the codex mid-summary:
+
+| Cluster ID | Codex Side | Claude Phase Side | Verdict |
+|---|---|---|---|
+
+Verdict ∈ {`real_consensus`, `codex_blindspot_corrected`, `still_ambiguous`}.
+
+## Pending Edits Needing Other Phase Confirmation
+
+| Edit ID | Phase That Proposed | Reason Other Phase Didn't Address | Carry to Next Round? |
+|---|---|---|---|
+
+## Rejected Or Deferred Edits
 
 | Proposal | Reason | Source Requirement Protected |
 |---|---|---|
 
 ## Requirement Preservation Check
 
-| Source Requirement | Preserved In Draft | Notes |
-|---|---|---|
+| Source Requirement (REQ-*) | Preserved In Carry-Forward | Status | Notes |
+|---|---|---|---|
 
-## Cross-model disagreements
-
-(Populate this section when roundtable_mode == "dual". List every position
-where Claude verdict and Codex verdict diverged for any lens in this round.
-Format: bullet list with [Lens / Claude position / Codex position /
-Recommended carry-forward]. Write "N/A — not dual mode" otherwise.)
+Status ∈ {`protected`, `weakening_accepted_with_reason`, `still_at_risk`}.
+Any `still_at_risk` row MUST also appear in `Codex-vs-Claude-Phase
+Disagreements` or trigger a BLOCKED return.
 
 ## Next Round Focus
 
-- Concrete focus item
+- Concrete focus item (only meaningful when `{round_number} <
+  classification.cross_rounds`; if this is the final round, list "N/A — final
+  round, hand off to spec-consensus-editor")
 
-## Risks
+## Residual Risks
 
-- Residual risk or ambiguity
+- Risks the consensus editor must explicitly accept or address
 ```
 
 ## Final Response
@@ -128,18 +186,26 @@ Return exactly one JSON object:
 
 ```json
 {
-  "status": "READY_FOR_NEXT_ROUND | BLOCKED_SPEC_REWRITE",
-  "round_state_path": "path",
+  "status": "READY_FOR_NEXT_ROUND | READY_FOR_SPEC_CONSENSUS | BLOCKED_SPEC_REWRITE",
+  "stage": "spec",
+  "round_number": 1,
+  "round_state_path": "<output_path>",
   "source_requirements_preserved": true,
-  "unresolved_disagreements": [],
-  "cross_model_disagreements": [],
+  "codex_vs_claude_disagreement_count": 0,
+  "blindspot_resolutions": {
+    "real_consensus": 0,
+    "codex_blindspot_corrected": 0,
+    "still_ambiguous": 0
+  },
+  "still_at_risk_req_anchors": [],
   "next_round_focus": [],
   "blocked_reason": ""
 }
 ```
 
-The `cross_model_disagreements` array is populated in `dual` mode only. Each
-entry: `{ "lens": "...", "claude_position": "...", "codex_position": "...", "carry_forward": "..." }`.
-
-Use `BLOCKED_SPEC_REWRITE` only when the round cannot preserve source intent
-without human repair.
+- Use `READY_FOR_NEXT_ROUND` when `{round_number} < classification.cross_rounds`.
+- Use `READY_FOR_SPEC_CONSENSUS` when `{round_number} ==
+  classification.cross_rounds` and the round can proceed to spec-consensus-editor.
+- Use `BLOCKED_SPEC_REWRITE` only when this round cannot preserve source intent
+  without human repair. `still_at_risk_req_anchors[]` must enumerate every
+  REQ-* anchor that triggered the block.

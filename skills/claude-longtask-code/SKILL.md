@@ -65,8 +65,8 @@ Step 7  Final E2E2          Claude Agent runs final_verify_cmd + final_e2e2_cmd 
                             (stub screenshots, dod gaps, etc.)
 
 Step 8  Final-alignment     MANDATORY DUAL hybrid (Claude + Codex both required) →
-                            PASS or escalate. The "always dual" exception applies
-                            here regardless of roundtable_mode_resolved.
+                            PASS or escalate. Last-line-of-defense; runs once at
+                            end-of-pipeline independent of cross-rounds outcomes.
 
 Step 9  Ship (optional)     docs_sync → update-docs; ship → gstack /ship.
                             Failure inside /ship does NOT roll back phase commits —
@@ -105,13 +105,13 @@ Wrapper: `../../lib/codex-wrapper.sh`.
 /longtask:longtaskCode .longtask/state/{spec_basename}/plan-only-handoff.json
 ```
 
-The manifest contains `plan_path`, `plan_post_roundtable_sha256`, `state_path`,
-and the alignment-matrix path. Orchestrator:
+The manifest contains `plan_path`, `plan_post_cross_rounds_sha256`,
+`state_path`, and the alignment-matrix path. Orchestrator:
 1. Reads the manifest.
-2. Asserts the plan file SHA-256 matches `plan_post_roundtable_sha256`. Drift →
-   `BLOCKED_SPEC`.
+2. Asserts the plan file SHA-256 matches `plan_post_cross_rounds_sha256`.
+   Drift → `BLOCKED_SPEC`.
 3. Loads the existing state file (`mode` transitions from
-   `claude-hybrid-plan-only` → `claude-hybrid`).
+   `claude-cross-rounds-plan-only` → `claude-cross-rounds`).
 4. Starts at Step 6 for `P1`.
 
 ### Form 2: Plan path directly (with or without prior `/longtask:longtaskPlan` state)
@@ -131,8 +131,8 @@ Orchestrator:
    `verify_cmd`, `verify_passes_when`, `dod`, `source_requirements`).
    Missing → `BLOCKED_SPEC`.
 4. If a state file exists at `.longtask/state/{spec_basename}.json`, loads it;
-   if not, initializes a fresh state file with `mode: "claude-hybrid-code-only"`
-   and the plan-derived identity fields.
+   if not, initializes a fresh state file with
+   `mode: "claude-cross-rounds-code-only"` and the plan-derived identity fields.
 5. Starts at Step 6 for the first phase whose status is not `PASS`.
 
 ### Resume
@@ -148,15 +148,15 @@ newer than the last final-alignment timestamp.
 ## State file (subset of /longtask state, with handoff transition)
 
 When started from a `/longtask:longtaskPlan` handoff:
-- `mode` flips `claude-hybrid-plan-only` → `claude-hybrid`.
+- `mode` flips `claude-cross-rounds-plan-only` → `claude-cross-rounds`.
 - Spec-stage / plan-stage fields are read-only — `/longtask:longtaskCode` must not
   modify them; if it does, the next `/longtask:longtaskCode --resume` would fail
   sha-drift check.
 
 When started from a plan file directly (no prior `/longtask:longtaskPlan`):
-- `mode` is `claude-hybrid-code-only`.
+- `mode` is `claude-cross-rounds-code-only`.
 - Spec-stage fields (`classification_path`, `enhanced_spec_path`,
-  `spec_round_state_paths`, etc.) are absent. `plan_integrity_review_path`
+  `spec_cross_round_state_paths`, etc.) are absent. `plan_integrity_review_path`
   may also be absent — this signals "no formal Step 5 gate ran in this
   session"; the orchestrator MUST run plan-integrity-review (Step 5 from
   `/longtask`) inline at Step 6 startup as a precondition before dispatching
@@ -170,7 +170,7 @@ Fields `/longtask:longtaskCode` writes:
 |---|---|
 | Per-phase | `phases.{Pn}.{status, rounds_used, verifier_json_paths[], commit_sha, last_heartbeat, heartbeats[]}` |
 | Final | `final_report_path`, `final_alignment_review_path` |
-| Model accounting | `model_requests[]`, `agents[]`, `claude_subagents[]`, `codex_subagents[]`, `hybrid_lens_assignments` (decision-review / final-alignment-review keys only) |
+| Model accounting | `model_requests[]`, `agents[]`, `claude_subagents[]`, `codex_subagents[]`, `hybrid_gate_assignments` (decision-review / final-alignment-review keys only) |
 | Ship | `ship_attempted`, `ship_pr_url` (when spec.ship == true) |
 
 ## BLOCKED enum (subset)

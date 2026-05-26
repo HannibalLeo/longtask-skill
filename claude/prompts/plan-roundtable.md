@@ -1,74 +1,62 @@
 # Longtask Plan Roundtable Prompt
 
-<!-- HYBRID ROUTING NOTE
+<!-- ROUTING NOTE (v0.4 cross-rounds)
 This is the **Step 4b (plan-stage)** lens-level prompt. Each invocation runs
-exactly ONE lens × ONE round on the implementation plan, AFTER plan-writer
-and BEFORE plan-integrity-review. The parallel Step 2 prompt is
-`spec-roundtable.md` (same lens routing, different question focus — that one
+exactly ONE lens × ONE phase (codex or claude) × ONE round on the implementation
+plan, AFTER plan-writer and BEFORE plan-integrity-review. The parallel Step 2
+prompt is `spec-roundtable.md` (same shape, different question focus — that one
 critiques the source spec; this one critiques the execution plan).
 
-Lens-to-model routing (design spec §调用矩阵, step b — same as Step 2):
-  engineering   → Claude opus via Agent tool
-  design        → Claude opus via Agent tool
-  ui-design     → Claude opus via Agent tool
-  ceo-product   → Codex GPT-5.5 via `codex exec`
-  domain-expert → Codex GPT-5.5 via `codex exec`
+v0.4 change: lenses are NO LONGER bound to a single model. Every lens runs
+TWICE per round — first via codex (during the codex phase of the round),
+then via Claude Agent (during the claude phase of the round, with the codex
+phase output + codex mid-summary as additional input).
 
-The roundtable_mode resolution is identical to Step 2 and applies to BOTH
-stages — no per-stage override:
-  hybrid (default) — role-based routing above
-  dual             — BOTH models run every lens concurrently; outputs are
-                     independent verdicts; plan-round-state editor MUST surface
-                     genuine cross-model disagreements into
-                     `Cross-model disagreements` section
+A round consists of:
+  Phase 1: codex × all lenses (parallel)         — this prompt fires with `phase=codex`
+  Phase 2: codex xhigh mid-round summary         — see `plan-codex-mid-summary.md`
+  Phase 3: claude × all lenses (parallel)        — this prompt fires with `phase=claude`,
+                                                    sees codex Phase 1 + Phase 2 output
+  Phase 4: claude opus end-round summary         — see `plan-round-state.md`
 
-`claude_only` / `codex_only` were removed 2026-05-26. On dispatch failure
-orchestrator emits `BLOCKED_*`; do not silently degrade to single-model.
+The orchestrator reads `classification.cross_rounds` to determine how many
+rounds to run. Plan-stage is **non-skippable** regardless of `pre_vetted`.
 
-The orchestrator reads `classification.required_lenses` and
-`classification.plan_rounds` to determine which lenses to run and how many
-rounds. `plan_rounds ∈ {1, 2}` — **Step 4b is non-skippable** (`plan_rounds`
-cannot be `0`), even when `spec_rounds == 0` at the 0+1 tier.
-
-Input parameters include `lens` and `lens_model` (claude|codex) so the
-invoking orchestrator can confirm which model is actually running this
-instance.
+`hybrid` / `dual` modes were removed in v0.4. Every round is now codex+claude
+cross-pair by construction; there is no lens-model routing knob.
 -->
 
 Substitutions: `{plan_path}`, `{plan_sha256}`, `{enhanced_spec_path}`,
-`{alignment_matrix_path}`, `{round_number}`, `{specialist_role}`,
-`{lens_model}`, `{roundtable_mode}`, `{classification_json}`,
-`{implementation_plan_text}`, `{enhanced_spec_text}`,
-`{prior_consensus}`, `{unresolved_disagreements}`,
+`{alignment_matrix_path}`, `{round_number}`, `{phase}`, `{specialist_role}`,
+`{classification_json}`, `{implementation_plan_text}`, `{enhanced_spec_text}`,
+`{prior_round_state}`, `{codex_phase_outputs}`, `{codex_mid_summary}`,
 `{repo_evidence_summary}`, `{output_path}`.
 
 ---
 
 You are a longtask **plan-stage** specialist discussion subagent. Use the
-assigned `{specialist_role}` lens. You are running as **`{lens_model}`** in
-**`{roundtable_mode}`** mode.
+assigned `{specialist_role}` lens. You are running in the **`{phase}`** phase
+(`codex` or `claude`) of round `{round_number}`.
 
 Typical lenses: engineering, ceo-product, design, ui-design, domain-expert.
 
 Your goal is **not** to relitigate spec direction (that was Step 2's job, and
-may have been intentionally skipped at the 0+1 tier). Your goal is to scrutinize
-the **implementation plan as an execution contract** — assume the spec is
-fixed; assume what to build is settled; question only how the plan proposes
-to build and verify it.
+may have been intentionally skipped at the light tier when pre-vetted). Your
+goal is to scrutinize the **implementation plan as an execution contract** —
+assume the spec is fixed; assume what to build is settled; question only how
+the plan proposes to build and verify it.
 
-Do not implement code. Do not rewrite the spec. Do not ask the user for
-confirmation.
+Do not implement code. Do not rewrite the spec or the plan body directly. Do
+not ask the user for confirmation. Your output is consumed by either the codex
+mid-summary (if `phase==codex`) or the claude end-summary (if `phase==claude`).
 
-## Round
+## Round Identity
 
-Round: `{round_number}` (total rounds determined by classifier's `plan_rounds`
-field — one of `{1, 2}` per the 4-tier scheme)
-
-Specialist role: `{specialist_role}`
-
-Model: `{lens_model}`
-
-Mode: `{roundtable_mode}`
+- Round: `{round_number}` (of `classification.cross_rounds`)
+- Phase: `{phase}` (`codex` = early reading; `claude` = late reading, sees
+  codex phase outputs + codex mid-summary)
+- Specialist role: `{specialist_role}`
+- Stage: plan
 
 ## Classification
 
@@ -94,16 +82,26 @@ SHA-256: `{plan_sha256}`
 {implementation_plan_text}
 ```
 
-## Prior Consensus / Round State
+## Prior Round-State (carry-forward from previous round; empty on round 1)
 
 ```markdown
-{prior_consensus}
+{prior_round_state}
 ```
 
-## Unresolved Disagreements
+## Codex Phase Outputs for This Round (read only when `phase==claude`; empty when `phase==codex`)
+
+When you are running as the `claude` phase, this section contains all 5
+lens outputs from the codex phase of THIS round. Bring an independent lens to
+the same questions, then explicitly agree, disagree, or extend.
 
 ```markdown
-{unresolved_disagreements}
+{codex_phase_outputs}
+```
+
+## Codex Mid-Summary for This Round (read only when `phase==claude`; empty when `phase==codex`)
+
+```markdown
+{codex_mid_summary}
 ```
 
 ## Repo Evidence Summary
@@ -151,25 +149,21 @@ make sense?") are OUT OF SCOPE here — they belonged to Step 2. Focus on:
 8. **Multi-lens preserves intent.** Do not weaken plan requirements during
    discussion — never propose dropping a `dod`, expanding `do_not_touch` to
    cover up an unsafe change, or relaxing `verify_passes_when` thresholds.
-9. **`dual` mode**: explicitly compare your verdict against what you expect the
-   other model might conclude differently. Flag genuine disagreements — do
-   not converge toward agreement just to reduce tension.
+9. **Cross-phase obligation** (claude phase only): explicitly compare your
+   verdict against the codex phase output for the same lens. Flag genuine
+   disagreements; when you agree, say so briefly and move to additive
+   contribution.
 
 ## Output Contract
 
-Return exactly this Markdown structure. This contract applies regardless of
-which model (`claude` or `codex`) runs this lens.
-
-Required sections: `Verdict`, `Plan Edit Proposals`, `Risks`,
-`Disagree-with-other-lenses`, `Citations`.
+Return exactly this Markdown structure.
 
 ```markdown
 ## Specialist Verdict
 
 - Role: `{specialist_role}`
 - Round: `{round_number}`
-- Model: `{lens_model}`
-- Mode: `{roundtable_mode}`
+- Phase: `{phase}`
 - Stage: plan
 - Confidence: 0.00
 
@@ -203,15 +197,17 @@ out_of_scope}`. `out_of_scope` requires a rationale row.
 | Topic | Concern | Preferred Resolution |
 |---|---|---|
 
-## Disagree-with-other-lenses
+## Disagree-with-other-lenses-or-other-phase
 
-Explicit positions where this lens disagrees with other lenses or with the
-prior consensus. Format as bullet list. Write "None" if no disagreements.
+Explicit positions where this lens disagrees with other lenses in the same
+round, with prior-round state, or — when running in the `claude` phase — with
+the codex phase output for ANY lens (especially same-role). Format as bullet
+list. Write "None" if no disagreements.
 
 ## Consensus Contribution
 
-Short bullet list of plan edits this role believes should be incorporated in
-the consensus rewrite.
+Short bullet list of plan edits this role believes should be carried into
+end-of-round state and ultimately into the plan-consensus-editor rewrite.
 
 ## Citations
 
@@ -219,11 +215,7 @@ Sources, code paths, or prior-round evidence referenced. Write "None" if
 no external references.
 ```
 
-For the final round (when `round_number` equals the classifier's `plan_rounds`),
-also include a `## Final Consensus Recommendation` section listing the edits
-the plan-consensus-editor should apply when rewriting `plan.md` in place.
-
-In `dual` mode for the final round, additionally include a
-`## Cross-model Divergence Summary` section that explicitly lists any
-positions where Claude and Codex reached different conclusions, with a
-recommendation for which position to carry forward and why.
+For the final round of the plan stage (when `round_number` equals
+`classification.cross_rounds`), also include a `## Final Consensus
+Recommendation` section listing the edits the plan-consensus-editor should
+apply when rewriting `plan.md` in place.

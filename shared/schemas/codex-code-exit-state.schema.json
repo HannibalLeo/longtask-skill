@@ -12,37 +12,46 @@
     "handoff_manifest_path",
     "handoff_manifest_sha256",
     "overall_status",
+    "first_blocked_phase",
+    "blocked_reason",
     "phase_results",
+    "decision_records",
+    "model_requests",
     "base_sha_before_phases",
     "head_sha_after_phases",
     "phase_commit_chain",
     "preserved_phase_commits",
     "resume_default_command",
     "safe_path_recovery_command",
-    "review_handoff_hint"
+    "plan_repair_command",
+    "review_retry_command",
+    "human_override_instructions",
+    "review_handoff"
   ],
   "properties": {
     "manifest_version": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "writer_skill": {
       "type": "string",
-      "enum": [
-        "codex-longtask-code"
-      ]
+      "const": "codex-longtask-code"
     },
     "completed_at": {
-      "type": "string"
+      "type": "string",
+      "format": "date-time"
     },
     "session_id": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "duration_seconds": {
       "type": "number",
       "minimum": 0
     },
     "handoff_manifest_path": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "handoff_manifest_sha256": {
       "type": "string",
@@ -52,11 +61,15 @@
       "$ref": "common-enums.schema.json#/$defs/final_status"
     },
     "first_blocked_phase": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "pattern": "^P[0-9]+$"
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^P[0-9]+$"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "blocked_reason": {
       "anyOf": [
@@ -71,9 +84,12 @@
     "phase_results": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": {
-        "$ref": "#/$defs/phase_result"
-      }
+      "patternProperties": {
+        "^P[0-9]+$": {
+          "$ref": "#/$defs/phase_result"
+        }
+      },
+      "additionalProperties": false
     },
     "decision_records": {
       "type": "array",
@@ -90,7 +106,8 @@
     "wrapper_mode_evidence": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "base_sha_before_phases": {
@@ -114,33 +131,107 @@
       }
     },
     "resume_default_command": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "safe_path_recovery_command": {
-      "type": "string"
+      "type": "string",
+      "minLength": 1
     },
     "plan_repair_command": {
-      "type": [
-        "string",
-        "null"
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "review_retry_command": {
-      "type": [
-        "string",
-        "null"
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "human_override_instructions": {
-      "type": [
-        "string",
-        "null"
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
       ]
     },
-    "review_handoff_hint": {
-      "type": "string"
+    "review_handoff": {
+      "$ref": "#/$defs/review_handoff"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overall_status": {
+            "const": "ALL_PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "first_blocked_phase": {
+            "type": "null"
+          },
+          "blocked_reason": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "overall_status": {
+            "const": "PARTIAL_PASS"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "first_blocked_phase": {
+            "type": "string",
+            "pattern": "^P[0-9]+$"
+          },
+          "blocked_reason": {
+            "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "overall_status": {
+            "const": "REVIEW_FAIL"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "blocked_reason": {
+            "$ref": "common-enums.schema.json#/$defs/blocked_reason"
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "phase_result": {
       "type": "object",
@@ -168,22 +259,27 @@
           ]
         },
         "goal": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "source_requirements": {
           "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "changed_files": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "diff_stat": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "retry_count": {
           "type": "integer",
@@ -191,23 +287,41 @@
         },
         "verifier_json_paths": {
           "type": "array",
+          "minItems": 1,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "parent_commit": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{40}$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "commit_sha": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{40}$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "started_at": {
-          "type": "string"
+          "type": "string",
+          "format": "date-time"
         },
         "completed_at": {
-          "type": "string"
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
@@ -246,10 +360,20 @@
           ]
         },
         "at": {
-          "type": "string"
+          "type": "string",
+          "format": "date-time"
         },
         "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision_id": {
           "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       }
     },
@@ -263,19 +387,63 @@
       ],
       "properties": {
         "role": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "requested": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "actual": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "reason": {
           "type": "string"
         },
         "model_degraded": {
           "type": "boolean"
+        }
+      }
+    },
+    "review_handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewer_skill",
+        "review_entrypoint_command",
+        "required_inputs",
+        "handoff_reason",
+        "hint"
+      ],
+      "properties": {
+        "reviewer_skill": {
+          "type": "string",
+          "const": "claude-longtask-review"
+        },
+        "review_entrypoint_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "handoff_reason": {
+          "type": "string",
+          "enum": [
+            "codex_step6_all_pass",
+            "codex_step6_partial_pass",
+            "codex_step6_review_fail"
+          ]
+        },
+        "hint": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

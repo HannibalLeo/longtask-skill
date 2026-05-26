@@ -1,0 +1,107 @@
+{
+  "case_id": "codex-exit-malformed-verifier-json",
+  "description": "Malformed verifier output forces review fail with verifier-schema blocked reason and recovery commands.",
+  "case_type": "contract_case",
+  "actual": {
+    "overall_status": "REVIEW_FAIL",
+    "first_blocked_phase": "P4",
+    "blocked_reason": "BLOCKED_VERIFIER_SCHEMA_INVALID",
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P3-r1-verdict.json"
+        ],
+        "commit_sha": "4444444444444444444444444444444444444444"
+      },
+      "P4": {
+        "phase_status": "REVIEW_FAIL",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P4-r1-verdict-malformed.json"
+        ],
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "4444444444444444444444444444444444444444"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "4444444444444444444444444444444444444444"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+    "safe_path_recovery_command": "python3 codex/lib/longtask-runner.py spec.md --from P4 --no-commit",
+    "plan_repair_command": "claude-longtask-plan .longtask/plans/spec.md --repair verifier-contract",
+    "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry",
+    "human_override_instructions": "Re-run verifier with schema-bound JSON output before retry.",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "review_entrypoint_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json",
+      "required_inputs": [
+        ".longtask/state/spec/codex-code-exit.json",
+        ".longtask/reports/spec/P4-r1-verdict-malformed.json"
+      ],
+      "handoff_reason": "codex_step6_review_fail",
+      "hint": "Verifier artifact malformed; repair verifier contract first."
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  },
+  "expected": {
+    "overall_status": "REVIEW_FAIL",
+    "first_blocked_phase": "P4",
+    "blocked_reason": "BLOCKED_VERIFIER_SCHEMA_INVALID",
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "commit_sha": "4444444444444444444444444444444444444444"
+      },
+      "P4": {
+        "phase_status": "REVIEW_FAIL",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P4-r1-verdict-malformed.json"
+        ],
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "4444444444444444444444444444444444444444"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "4444444444444444444444444444444444444444"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+    "safe_path_recovery_command": "python3 codex/lib/longtask-runner.py spec.md --from P4 --no-commit",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "handoff_reason": "codex_step6_review_fail"
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  }
+}

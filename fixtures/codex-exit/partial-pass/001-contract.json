@@ -1,0 +1,104 @@
+{
+  "case_id": "codex-exit-partial-pass-first-blocked",
+  "description": "Partial pass preserves prior PASS commit and resumes from first non-PASS phase.",
+  "case_type": "contract_case",
+  "actual": {
+    "overall_status": "PARTIAL_PASS",
+    "first_blocked_phase": "P4",
+    "blocked_reason": "BLOCKED_SCOPE_VIOLATION",
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P3-r1-verdict.json"
+        ],
+        "commit_sha": "3333333333333333333333333333333333333333"
+      },
+      "P4": {
+        "phase_status": "BLOCKED",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P4-r2-verdict.json"
+        ],
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+    "safe_path_recovery_command": "python3 scripts/scope-gate.py --phase P4 --plan .longtask/plans/spec.md",
+    "plan_repair_command": "python3 codex/lib/longtask-runner.py spec.md --from P3 --no-commit",
+    "review_retry_command": "bash scripts/run-fixtures.sh --group codex-exit",
+    "human_override_instructions": "Only override after documenting preserved blocking checks.",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "review_entrypoint_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json",
+      "required_inputs": [
+        ".longtask/state/spec/codex-code-exit.json",
+        ".longtask/reports/spec/P4-r2-verdict.json"
+      ],
+      "handoff_reason": "codex_step6_partial_pass",
+      "hint": "Review blocked phase and recovery path before final stages."
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  },
+  "expected": {
+    "overall_status": "PARTIAL_PASS",
+    "first_blocked_phase": "P4",
+    "blocked_reason": "BLOCKED_SCOPE_VIOLATION",
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "commit_sha": "3333333333333333333333333333333333333333"
+      },
+      "P4": {
+        "phase_status": "BLOCKED",
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P4",
+    "safe_path_recovery_command": "python3 scripts/scope-gate.py --phase P4 --plan .longtask/plans/spec.md",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "handoff_reason": "codex_step6_partial_pass"
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  }
+}

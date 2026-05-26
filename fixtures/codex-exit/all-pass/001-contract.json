@@ -1,0 +1,138 @@
+{
+  "case_id": "codex-exit-all-pass-commit-chain",
+  "description": "All phases PASS with intact verifier paths, commit chain, recovery commands, and review handoff.",
+  "case_type": "contract_case",
+  "actual": {
+    "overall_status": "ALL_PASS",
+    "first_blocked_phase": null,
+    "blocked_reason": null,
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "changed_files": [
+          "shared/schemas/handoff-manifest.schema.json",
+          "fixtures/handoff-routing-startup/001-fast-allowed-pass.json"
+        ],
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P3-r1-verdict.json"
+        ],
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      "P4": {
+        "phase_status": "PASS",
+        "changed_files": [
+          "skills/codex-longtask-code/SKILL.md",
+          "shared/schemas/codex-code-exit-state.schema.json"
+        ],
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P4-r1-verdict.json"
+        ],
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume",
+    "safe_path_recovery_command": "python3 scripts/scope-gate.py --phase P4 --plan .longtask/plans/spec.md",
+    "plan_repair_command": null,
+    "review_retry_command": null,
+    "human_override_instructions": null,
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "review_entrypoint_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json",
+      "required_inputs": [
+        ".longtask/state/spec/codex-code-exit.json",
+        ".longtask/reports/spec/P3-r1-verdict.json",
+        ".longtask/reports/spec/P4-r1-verdict.json"
+      ],
+      "handoff_reason": "codex_step6_all_pass",
+      "hint": "Step 6 complete; continue with bounded Claude review."
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  },
+  "expected": {
+    "overall_status": "ALL_PASS",
+    "first_blocked_phase": null,
+    "blocked_reason": null,
+    "phase_results": {
+      "P3": {
+        "phase_status": "PASS",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P3-r1-verdict.json"
+        ],
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      "P4": {
+        "phase_status": "PASS",
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P4-r1-verdict.json"
+        ],
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    },
+    "phase_commit_chain": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "preserved_phase_commits": [
+      {
+        "phase_id": "P3",
+        "commit_sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "phase_id": "P4",
+        "commit_sha": "2222222222222222222222222222222222222222"
+      }
+    ],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume",
+    "safe_path_recovery_command": "python3 scripts/scope-gate.py --phase P4 --plan .longtask/plans/spec.md",
+    "plan_repair_command": null,
+    "review_retry_command": null,
+    "human_override_instructions": null,
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "handoff_reason": "codex_step6_all_pass"
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  }
+}

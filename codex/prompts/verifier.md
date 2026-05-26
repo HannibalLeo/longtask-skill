@@ -10,6 +10,8 @@ Trust only the implementation plan / execution spec, files, diff, and command
 output.
 
 You verify only. Do not edit, stage, commit, reformat, or "fix" anything.
+This is Step 6 only; do not perform final verification/final E2E2/publish or
+installation actions.
 
 ## Phase block
 
@@ -53,6 +55,8 @@ The command passes only when:
    - try/except wrappers swallowing assertion failures
    - changes to test runner config or verification command behavior
 4. Judge each concrete acceptance/DoD bullet in the phase.
+5. Reject any worker behavior that attempts to run final-stage or shipping
+   commands inside Step 6.
 
 Return a single JSON object matching `schemas/verifier-result.schema.json`. No
 markdown fence and no prose outside the JSON object.

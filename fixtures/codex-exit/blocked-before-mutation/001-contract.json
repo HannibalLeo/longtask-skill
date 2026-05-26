@@ -1,0 +1,75 @@
+{
+  "case_id": "codex-exit-blocked-before-mutation",
+  "description": "Startup gate failure blocks before any commit or code mutation.",
+  "case_type": "contract_case",
+  "actual": {
+    "overall_status": "PARTIAL_PASS",
+    "first_blocked_phase": "P3",
+    "blocked_reason": "BLOCKED_MANIFEST_SCHEMA_INVALID",
+    "phase_results": {
+      "P3": {
+        "phase_status": "BLOCKED",
+        "changed_files": [],
+        "verifier_json_paths": [
+          ".longtask/reports/spec/P3-startup-blocked.json"
+        ],
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [],
+    "preserved_phase_commits": [],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P3",
+    "safe_path_recovery_command": "python3 codex/lib/longtask-runner.py spec.md --from P3 --dry-run",
+    "plan_repair_command": "claude-longtask-plan .longtask/plans/spec.md --repair",
+    "review_retry_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json --retry",
+    "human_override_instructions": "Fix manifest schema violations before rerun.",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "review_entrypoint_command": "claude-longtask-review .longtask/state/spec/codex-code-exit.json",
+      "required_inputs": [
+        ".longtask/state/spec/codex-code-exit.json",
+        ".longtask/reports/spec/P3-startup-blocked.json"
+      ],
+      "handoff_reason": "codex_step6_partial_pass",
+      "hint": "Blocked before mutation; recover through manifest repair."
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  },
+  "expected": {
+    "overall_status": "PARTIAL_PASS",
+    "first_blocked_phase": "P3",
+    "blocked_reason": "BLOCKED_MANIFEST_SCHEMA_INVALID",
+    "phase_results": {
+      "P3": {
+        "phase_status": "BLOCKED",
+        "changed_files": [],
+        "commit_sha": null
+      }
+    },
+    "phase_commit_chain": [],
+    "preserved_phase_commits": [],
+    "resume_default_command": "python3 codex/lib/longtask-runner.py spec.md --resume --from P3",
+    "safe_path_recovery_command": "python3 codex/lib/longtask-runner.py spec.md --from P3 --dry-run",
+    "review_handoff": {
+      "reviewer_skill": "claude-longtask-review",
+      "handoff_reason": "codex_step6_partial_pass"
+    },
+    "step6_forbidden_actions": {
+      "final_verify_cmd": false,
+      "final_e2e2_cmd": false,
+      "push": false,
+      "pr": false,
+      "publish": false,
+      "deploy": false,
+      "global_install": false
+    }
+  }
+}

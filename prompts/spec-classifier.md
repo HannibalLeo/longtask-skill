@@ -65,27 +65,23 @@ Classify task kind and direction/domain. Examples:
 Recommend specialist lenses only when useful. Prefer gstack engineering, CEO,
 design, UI design, and an industry expert when the task direction calls for it.
 
-## Discussion Rounds and Risk Assessment
+## Discussion Rounds and Risk Assessment (tier-based, two-stage)
 
-Set `discussion_rounds` according to decision #5 (revised — three-tier risk):
+The pipeline now has **two** roundtable stages: spec-roundtable (Step 2, on the
+source spec) and plan-roundtable (Step 4b, on the implementation plan after
+plan-writer). You MUST emit two integers — `spec_rounds` and `plan_rounds` —
+forming exactly one of four tiers. `plan_rounds ≥ 1` always; Step 4b is
+non-skippable because the plan is the concrete execution contract.
 
-The enum is **`{1, 3, 5}`**. There is no zero (every spec gets at least one round
-of multi-lens scrutiny) and no even values (3 and 5 are the only quorum sizes that
-proved stable in practice).
+| Tier | spec_rounds + plan_rounds | When |
+|---|---|---|
+| **0+1** | 0 + 1 | Pre-vetted: `input_shape ∈ {plan_with_source, self_contained_plan}`, OR `source_spec` whose `gating: [...]` already ran any of `office-hours` / `plan-ceo-review` / `plan-eng-review` in the same session (verifiable in the conversation transcript). Spec-roundtable is skipped; plan-roundtable still gets one round of multi-lens sanity. |
+| **1+1** | 1 + 1 | Default minimum for any unvetted `source_spec` / `hybrid` that is low-risk. One spec-stage round catches obvious framing errors; one plan-stage round catches execution-design errors. |
+| **2+1** | 2 + 1 | Medium-risk `source_spec` / `hybrid` — changes cross-module contracts, introduces new dependencies, plan will have ≥4 phases, or scope is ambiguous. Extra spec-stage round to converge on approach before plan is committed to. |
+| **3+2** | 3 + 2 | High-risk `source_spec` / `hybrid` — must cite at least one high-risk trigger in `risk_reasons`. Also forces `suggested_roundtable_mode: "dual"`. |
 
-- **`plan_with_source` or `self_contained_plan` → 1** (sanity-check pass; the user
-  already submitted a plan, so one lens-wide review is enough to catch obvious
-  gaps before plan-writer runs)
-- **Low-risk `source_spec` or `hybrid` → 1** (minor clarifications, low ambiguity,
-  no irreversible changes, no external API contracts, narrow blast radius)
-- **Medium-risk `source_spec` or `hybrid` → 3** (default for non-trivial specs
-  that change cross-module contracts, introduce new dependencies, or modify
-  internal data schemas without external impact)
-- **High-risk `source_spec` or `hybrid` → 5** (only when at least one trigger
-  below fires)
-
-High-risk triggers (`discussion_rounds: 5`) — must cite at least one in
-`risk_reasons` to justify picking 5:
+High-risk triggers (3+2 tier) — must cite at least one in `risk_reasons` to
+justify the tier:
 
 - Irreversible data migration or destructive schema change
 - Regulatory, clinical, or patient-safety context
@@ -93,25 +89,37 @@ High-risk triggers (`discussion_rounds: 5`) — must cite at least one in
 - Breaking external API contract (downstream consumers affected)
 - Cross-module architectural change with broad blast radius (>3 modules)
 
-**No lean-conservative bias.** Pick the bucket your evidence actually supports.
-If you are genuinely uncertain between low and medium, pick **medium (3)** and
-record the uncertainty in `risk_reasons` (e.g., `"ambiguous scope — defaulted to medium"`).
-The previous rule that escalated all uncertain specs to 5 was removed because
-rounds 4-5 showed diminishing returns; over-discussion has its own quality cost
-(lens fatigue, repetition).
+**Tier selection precedence** (apply in order, first match wins):
+
+1. **Pre-vetted check** — `input_shape ∈ {plan_with_source, self_contained_plan}`
+   → `0+1`. OR `source_spec.gating` mentions at least one of `office-hours` /
+   `plan-ceo-review` / `plan-eng-review` AND the conversation evidence shows
+   that gating was actually run in this session → `0+1`. Otherwise continue.
+2. **High-risk check** — any high-risk trigger fires → `3+2` and
+   `suggested_roundtable_mode: "dual"` (both required together).
+3. **Medium-risk check** — cross-module contract change / new dependency /
+   ≥4 phases inferred / ambiguous scope → `2+1`. Cite the reason in
+   `risk_reasons`.
+4. **Default** — `1+1`. `risk_reasons` may be empty.
+
+**No lean-conservative bias.** Pick the tier your evidence actually supports.
+If genuinely uncertain between `1+1` and `2+1`, pick `2+1` and record
+`"ambiguous scope — defaulted to medium"` in `risk_reasons`. Do not pad
+rounds to look thorough; for extra heterogeneity escalate via
+`roundtable_mode: dual` instead.
 
 **Override rules**:
-- There is no `discussion_required` frontmatter field — it was removed. To
-  force cross-model heterogeneity, set `roundtable_mode: dual` in the spec
-  frontmatter instead of inflating round count.
-- The minimum is **1**. You cannot emit `0`. The maximum is **5**. No
-  intermediate values (`2`, `4`) are accepted.
+- There is no `discussion_required` frontmatter field — it was removed.
+- The legacy single `discussion_rounds` field is replaced by the
+  `(spec_rounds, plan_rounds)` pair. Do not emit `discussion_rounds`.
+- `plan_rounds` cannot be `0` — Step 4b is non-skippable.
 
 ## Roundtable Mode Suggestion (decision #2 + Roadmap)
 
-In addition to `discussion_rounds`, you MUST emit a `suggested_roundtable_mode`
-that orchestrator consults when `spec.roundtable_mode` is not explicitly set in
-spec frontmatter. The orchestrator's decision order is:
+In addition to `spec_rounds` / `plan_rounds`, you MUST emit a
+`suggested_roundtable_mode` that orchestrator consults when
+`spec.roundtable_mode` is not explicitly set in spec frontmatter. The
+orchestrator's decision order is:
 
 ```
 spec.roundtable_mode  >  classifier.suggested_roundtable_mode  >  "hybrid"
@@ -125,24 +133,23 @@ Rules for `suggested_roundtable_mode`:
 - `"dual"` — set this when ANY of the following apply (each is independently
   sufficient):
   - `risk_reasons` contains regulatory / clinical / patient-safety / data-loss /
-    security boundary / irreversible migration
+    security boundary / irreversible migration (always co-occurs with the 3+2 tier)
   - `task_direction` is medical, pharma, finance, legal, or any regulated industry
   - the spec touches authentication, authorization, PHI/PII handling, or audit logs
   - the spec proposes an external API contract change with downstream consumers
 - `"hybrid"` (default) — set this for non-regulated source_spec / hybrid inputs
   where standard per-lens routing (engineering/design/ui-design → Claude,
   ceo-product/domain-expert → Codex) gives sufficient heterogeneity
-- `"claude_only"` — only when you have strong reason to believe Codex is
-  unavailable for this run (rarely chosen by classifier — usually a spec-level
-  override)
-- `"codex_only"` — only when the spec explicitly requests cost-minimized review
-  (rarely chosen by classifier)
 
-**Tie-break with `discussion_rounds`**: if you set `discussion_rounds: 5`
-because of any high-risk trigger above, you MUST also set
-`suggested_roundtable_mode: "dual"`. The two signals are correlated — a 5-round
-spec running in `hybrid` mode wastes the per-round cost without the cross-model
-disagreement check that justifies the higher round count.
+**Removed modes:** `"claude_only"` and `"codex_only"` were retired
+2026-05-26. Single-model roundtable defeats the cross-model blindspot defense
+that motivates roundtable; if you'd previously emit one of these, emit
+`"hybrid"` instead and let the orchestrator BLOCKED_* on dispatch failure
+rather than silently degrade.
+
+**Tie-break with tier**: if the tier is `3+2`, you MUST also set
+`suggested_roundtable_mode: "dual"`. The two signals are correlated — the
+high-risk tier without the cross-model check wastes round budget.
 
 Select `required_lenses` from:
 `["engineering", "ceo-product", "design", "ui-design", "domain-expert"]`
@@ -166,13 +173,19 @@ Write exactly one JSON object. It must be suitable to save at
       "reason": "cross-module correctness and verification"
     }
   ],
-  "discussion_rounds": 5,
+  "tier_label": "3+2",
+  "spec_rounds": 3,
+  "plan_rounds": 2,
   "suggested_roundtable_mode": "dual",
   "required_lenses": ["engineering", "ceo-product", "domain-expert"],
   "risk_reasons": [
     "irreversible data migration",
     "regulatory/clinical context"
   ],
+  "pre_vetted": {
+    "is_pre_vetted": false,
+    "reason": "input_shape=source_spec; no gating evidence in session"
+  },
   "preflight": {
     "run_spec_enhancement": true,
     "run_plan_writer": true,
@@ -196,23 +209,33 @@ Write exactly one JSON object. It must be suitable to save at
 
 ### Field Definitions
 
-- `discussion_rounds: int` — Number of roundtable rounds to run. Enum: `{1, 3, 5}`.
-  Determined strictly by risk level as described above. No `discussion_required`
-  override exists. Minimum is 1 (plan shapes and low-risk source_spec/hybrid),
-  maximum is 5 (high-risk only). No intermediate values (`0`, `2`, `4`) are
-  emitted.
-- `suggested_roundtable_mode: string` — One of
-  `["hybrid", "dual", "claude_only", "codex_only"]`. Orchestrator consults this
-  when `spec.roundtable_mode` is absent. MUST be `"dual"` whenever
-  `discussion_rounds == 5`. See "Roundtable Mode Suggestion" above for rules.
+- `tier_label: string` — One of `"0+1"`, `"1+1"`, `"2+1"`, `"3+2"`. Must agree
+  with the `spec_rounds` + `plan_rounds` pair below; orchestrator validates
+  consistency. Use the label as a human-readable summary; `spec_rounds` /
+  `plan_rounds` are the machine-readable source of truth.
+- `spec_rounds: int` — Step 2 (spec-roundtable) round count.
+  Enum: `{0, 1, 2, 3}`. `0` only at the 0+1 tier.
+- `plan_rounds: int` — Step 4b (plan-roundtable) round count.
+  Enum: `{1, 2}`. **Never 0** — Step 4b is non-skippable.
+- `suggested_roundtable_mode: string` — One of `["hybrid", "dual"]`. Orchestrator
+  consults this when `spec.roundtable_mode` is absent. MUST be `"dual"` at the
+  `3+2` tier. `"claude_only"` / `"codex_only"` were removed 2026-05-26 — do not
+  emit them.
 - `required_lenses: [string]` — Subset of
-  `["engineering","ceo-product","design","ui-design","domain-expert"]` needed for
-  this spec's roundtable. Always non-empty (minimum 1 round always runs).
-- `risk_reasons: [string]` — Concrete reasons that drove the `discussion_rounds`
-  value. Examples: `"irreversible data migration"`, `"regulatory/clinical"`,
-  `"security boundary change"`, `"API contract break"`, `"cross-module blast radius"`,
-  `"ambiguous scope — defaulted to medium"`. Required when `discussion_rounds >= 3`;
-  may be empty `[]` only when `discussion_rounds == 1`.
+  `["engineering","ceo-product","design","ui-design","domain-expert"]` used by
+  BOTH spec-roundtable and plan-roundtable. Always non-empty
+  (`plan_rounds ≥ 1` is mandatory, so at least one lens runs).
+- `risk_reasons: [string]` — Concrete reasons that drove the tier choice.
+  Examples: `"irreversible data migration"`, `"regulatory/clinical"`,
+  `"security boundary change"`, `"API contract break"`,
+  `"cross-module blast radius"`, `"ambiguous scope — defaulted to medium"`,
+  `"≥4 phases inferred from spec sections"`. Required when tier ∈ `{2+1, 3+2}`;
+  may be empty `[]` for `1+1`. At the `0+1` tier, cite the pre-vetting evidence
+  in `pre_vetted.reason` instead.
+- `pre_vetted: object` — Required when `tier_label == "0+1"`. `is_pre_vetted` is
+  true and `reason` cites either (a) `input_shape ∈ {plan_with_source,
+  self_contained_plan}`, or (b) the gating skill name(s) plus a one-line summary
+  of where that gating ran in the current session's transcript.
 
 If the input is already a plan, set `run_spec_enhancement` and
 `run_plan_writer` to `false` only when the readiness standard for its shape is

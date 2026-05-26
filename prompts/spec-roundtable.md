@@ -1,7 +1,10 @@
 # Longtask Spec Roundtable Prompt
 
 <!-- HYBRID ROUTING NOTE
-This is a lens-level prompt. Each invocation runs exactly ONE lens × ONE round.
+This is the **Step 2 (spec-stage)** lens-level prompt. Each invocation runs
+exactly ONE lens × ONE round on the source spec, before plan-writer. The
+parallel Step 4b prompt is `plan-roundtable.md` (same routing matrix, different
+question focus).
 
 Lens-to-model routing (design spec §调用矩阵, step b):
   engineering   → Claude opus via Agent tool
@@ -12,18 +15,21 @@ Lens-to-model routing (design spec §调用矩阵, step b):
 
 The roundtable_mode field in the spec (or orchestrator) can override routing:
   hybrid (default) — role-based routing above
-  claude_only      — all lenses run as Claude opus via Agent tool
-  codex_only       — all lenses run as Codex GPT-5.5 via codex exec
   dual             — BOTH models run every lens concurrently; outputs are
                      independent verdicts; round-state editor MUST surface
                      genuine cross-model disagreements into
                      `Cross-model disagreements` section
 
+`claude_only` / `codex_only` were removed 2026-05-26 — single-model roundtable
+defeats the cross-model blindspot defense; on dispatch failure orchestrator
+emits `BLOCKED_*` rather than silently degrading.
+
 The orchestrator reads `classification.required_lenses` and
-`classification.discussion_rounds` to determine which lenses to run and how
-many rounds. `discussion_rounds` is one of `{1, 3, 5}` — Step 2 always runs at
-least one sanity-pass round (the previous "skip on plan-shape" branch was
-removed when the enum was tightened).
+`classification.spec_rounds` to determine which lenses to run and how many
+rounds. `spec_rounds ∈ {0, 1, 2, 3}` — Step 2 is **skipped** at the 0+1 tier
+(pre-vetted input) and otherwise runs the classifier-determined count. Step 4b
+(plan-roundtable) is non-skippable (`plan_rounds ≥ 1`) regardless of this
+Step 2 outcome.
 
 Input parameters include `lens` and `lens_model` (claude|codex) so the
 invoking orchestrator can confirm which model is actually running this
@@ -51,7 +57,8 @@ original intent. Do not implement code. Do not ask the user for confirmation.
 ## Round
 
 Round: `{round_number}` (total rounds determined by classifier's
-`discussion_rounds` field — one of `{1, 3, 5}`)
+`spec_rounds` field — one of `{0, 1, 2, 3}` per the 4-tier scheme; this prompt
+fires when `spec_rounds ≥ 1`)
 
 Specialist role: `{specialist_role}`
 
@@ -153,9 +160,9 @@ no external references.
 ```
 
 For the final round (when `round_number` equals the classifier's
-`discussion_rounds`), also include a `## Final Consensus Recommendation`
-section with the edits that should be written into the enhanced spec and
-update document.
+`spec_rounds`), also include a `## Final Consensus Recommendation` section
+with the edits that should be written into the enhanced spec and update
+document.
 
 In `dual` mode for the final round, additionally include a
 `## Cross-model Divergence Summary` section that explicitly lists any

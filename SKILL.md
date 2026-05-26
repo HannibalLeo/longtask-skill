@@ -437,9 +437,9 @@ Minimal example (one phase mid-run):
     ├── spec-consensus-editor.md      # hybrid consensus → enhanced-spec
     ├── spec-codex-sanity.md          # Codex single-pass spec audit (unconditional Step 3)
     ├── plan-writer.md                # Step 4 — Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
-    ├── plan-roundtable.md            # Step 4b per-lens hybrid roundtable on the implementation plan (ALWAYS RUN, plan_rounds ≥ 1; same lens routing as spec-roundtable, different question focus: phase decomposition, verifier observability, risk surfaces). **TODO(v0.1.3)**: design committed, prompt not yet authored — orchestrator currently treats Step 4b as a no-op until this file lands.
-    ├── plan-round-state.md           # plan-round-state editor (Claude Agent). **TODO(v0.1.3)**: not yet authored.
-    ├── plan-consensus-editor.md      # hybrid consensus that revises plan.md in place (preserves frontmatter sha256 chain). **TODO(v0.1.3)**: not yet authored.
+    ├── plan-roundtable.md            # Step 4b per-lens hybrid roundtable on the implementation plan (ALWAYS RUN, plan_rounds ≥ 1; same lens routing as spec-roundtable, different question focus: phase decomposition, verifier observability, risk surfaces)
+    ├── plan-round-state.md           # plan-round-state editor (Claude Agent)
+    ├── plan-consensus-editor.md      # hybrid consensus that revises plan.md in place (preserves frontmatter sha256 chain)
     # === Step 5 / 6 / 8 hybrid gates ===
     ├── plan-integrity-review.md      # hybrid: Claude primary + Codex secondary
     ├── decision-review.md            # hybrid: Claude primary + Codex secondary

@@ -103,16 +103,21 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
    ```json
    {
      "input_shape": "source_spec | hybrid | self_contained_plan | plan_with_source",
-     "discussion_rounds": 1,
-     "suggested_roundtable_mode": "hybrid | dual | claude_only | codex_only",
+     "tier_label": "0+1 | 1+1 | 2+1 | 3+2",
+     "spec_rounds": 0,
+     "plan_rounds": 1,
+     "suggested_roundtable_mode": "hybrid | dual",
      "required_lenses": [],
-     "risk_reasons": []
+     "risk_reasons": [],
+     "pre_vetted": {"is_pre_vetted": true, "reason": "..."}
    }
    ```
-   `discussion_rounds` must be one of `{1, 3, 5}` (no intermediate values; no zero —
-   every spec gets at least one round of multi-lens scrutiny).
-   `suggested_roundtable_mode` is required; missing field → re-dispatch classifier
-   once with a reminder, then `BLOCKED_AGENT_TOOL_FAILURE` if still missing.
+   `spec_rounds ∈ {0,1,2,3}` and `plan_rounds ∈ {1,2}` must agree with
+   `tier_label`. `plan_rounds == 0` is illegal — Step 4b is non-skippable.
+   `suggested_roundtable_mode` is required and limited to `{hybrid, dual}`
+   (`claude_only` / `codex_only` were removed 2026-05-26); missing or
+   illegal value → re-dispatch classifier once with a reminder, then
+   `BLOCKED_AGENT_TOOL_FAILURE` if still missing.
 3. Persist to `state.classification_path`.
 4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} →
    - **Plan-shape strict frontmatter check (moved from Step 0):** the input is
@@ -122,9 +127,10 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
      `final_report_path`. Missing any → `BLOCKED_SPEC` with a concrete diff
      showing the missing fields. Honor `final_smoke` as a deprecated alias of
      `final_e2e2_cmd` (emit deprecation notice).
-   - Plan-shape inputs **still run Step 2** (single-round sanity pass — see Step 2).
-     Plan-writer (Step 4) is skipped for these shapes, but the one-round
-     roundtable is unconditional.
+   - Plan-shape inputs hit the **0+1 tier** — spec-roundtable (Step 2) is
+     skipped entirely; plan-writer (Step 4) is also skipped (the plan is the
+     input); plan-roundtable (Step 4b) **still runs** with `plan_rounds == 1`
+     as the safety-net pass before plan-integrity.
 5. `input_shape` ∈ {`source_spec`, `hybrid`} → continue to Step 2. v2 frontmatter
    on the input is NOT required at this stage; plan-writer (Step 4) will
    generate a v2-formatted execution plan, and Step 4's validation will enforce
@@ -132,11 +138,19 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
 
 ---
 
-## Step 2 — Roundtable (unconditional, minimum 1 round)
+## Step 2 — Spec Roundtable (skippable only at 0+1 tier)
 
-Step 2 always runs. Round count is set by classifier's `discussion_rounds` ∈
-`{1, 3, 5}` (plan shapes and low-risk inputs run a single sanity-pass round;
-medium risk runs 3; only high-risk triggers cited in `risk_reasons` justify 5).
+Step 2 runs `spec_rounds` rounds on the SOURCE SPEC, before plan-writer.
+Round count is set by classifier's `spec_rounds` ∈ `{0, 1, 2, 3}` per the
+4-tier scheme (see Step 1). **`spec_rounds == 0` is legal ONLY at the
+0+1 tier** (`classification.pre_vetted.is_pre_vetted == true`).
+
+If `spec_rounds == 0`:
+1. Persist `state.spec_roundtable_skipped_reason = classification.pre_vetted.reason`.
+2. Skip directly to Step 3 (codex spec sanity).
+3. **Do NOT skip Step 4b** — plan-roundtable still runs (`plan_rounds ≥ 1`).
+
+If `spec_rounds ≥ 1`, run the rounds as described below.
 
 **Roundtable mode resolution — strict precedence, do NOT ask the user:**
 
@@ -156,28 +170,27 @@ signals — it is never an ASK_HUMAN.
 **Mode semantics:**
 - `hybrid` — Engineering / Design / UI-design lenses → Claude Agent; CEO-product /
   Domain-expert lenses → codex exec.
-- `claude_only` — all lenses → Claude Agent.
-- `codex_only` — all lenses → codex exec.
 - `dual` — every lens runs both Claude Agent AND codex exec in parallel; round-state
   editor surfaces cross-model disagreements. Auto-selected by classifier whenever
   `risk_reasons` contain regulatory / clinical / safety / data-loss / security /
-  irreversible-migration triggers, or when `discussion_rounds == 5`.
+  irreversible-migration triggers, or when the tier is `3+2`.
+
+`claude_only` / `codex_only` were removed 2026-05-26. Both Step 2 and Step 4b
+roundtables **require** both Claude and Codex lenses to be reachable; dispatch
+failure on either side → `BLOCKED_*` (no silent degradation to single-model).
 
 **Note:** `final-alignment-review` (Step 8) is always `dual` regardless of this field
 (决议 #2 exception clause).
 
-Run `discussion_rounds` rounds (minimum 1 for any `input_shape`; zero is not a legal
-value — every spec gets at least one sanity-pass round):
-
-For each round:
+For each of `spec_rounds` rounds:
 1. For each lens in `required_lenses`:
    - Route per hybrid table above.
    - If `dual`: dispatch both models concurrently; collect both outputs.
 2. Dispatch Claude Agent with `prompts/spec-round-state.md`, passing all lens outputs.
-   Write round state to `.longtask/reports/{spec}/rounds/round-{N}-state.md`.
+   Write round state to `.longtask/reports/{spec}/rounds/spec-round-{N}-state.md`.
 3. The next round reads that state file as its carry-forward draft.
 
-After the final round:
+After the final spec-stage round:
 - Dispatch Claude Agent (primary) with `prompts/spec-consensus-editor.md`.
 - Dispatch codex exec (secondary) with the same prompt (Claude reads codex's output
   as additional input before writing final enhanced spec).
@@ -268,6 +281,50 @@ against blind-spot reward hacking that survives Claude-only review.
    plan as either: (a) dedicated repair phase, (b) added dod bullets on
    relevant existing phases, or (c) explicit out-of-scope row with rationale.
    Missing → `BLOCKED_SPEC_REWRITE`.
+
+---
+
+## Step 4b — Plan Roundtable (ALWAYS RUN, plan_rounds ≥ 1)
+
+Step 4b runs `plan_rounds` rounds on the implementation plan produced by Step 4
+(or, for plan-shape inputs, on the input plan itself). This is the cheapest
+defense against bad phase decomposition because the plan is concrete enough
+that lens scrutiny can spot real execution problems (unobservable verifiers,
+hidden cross-phase coupling, over-coarse phases, missing dod evidence).
+
+**Always run.** Even at the 0+1 tier (`spec_rounds == 0`), `plan_rounds ≥ 1`
+because the plan is the final execution contract. Skipping Step 4b is illegal
+regardless of input shape; the only knob is `plan_rounds` ∈ `{1, 2}`.
+
+Mode resolution: same as Step 2 (`spec.roundtable_mode` > classifier suggestion
+> `"hybrid"`). The chosen mode applies to BOTH stages — no per-stage override.
+
+For each of `plan_rounds` rounds:
+1. For each lens in `required_lenses`:
+   - Route per the same hybrid table as Step 2 (engineering/design/ui-design →
+     Claude; ceo-product/domain-expert → Codex).
+   - If `dual`: dispatch both models concurrently; collect both outputs.
+   - Dispatch with `prompts/plan-roundtable.md` (not `spec-roundtable.md`).
+     Input: the current implementation plan + the enhanced spec + alignment matrix.
+2. Dispatch Claude Agent with `prompts/plan-round-state.md`, passing all lens outputs.
+   Write round state to `.longtask/reports/{spec}/rounds/plan-round-{N}-state.md`.
+3. The next round reads that state file as its carry-forward draft.
+
+After the final plan-stage round:
+- Dispatch Claude Agent (primary) with `prompts/plan-consensus-editor.md`.
+- Dispatch codex exec (secondary) with the same prompt.
+- The consensus editor **rewrites `plan.md` in place** — frontmatter must be
+  preserved exactly (especially `source_spec_path` / `source_spec_sha256` /
+  `final_verify_cmd` / `final_e2e2_cmd` / `final_report_path`).
+- Recompute the plan sha256 after the rewrite and persist as
+  `state.implementation_plan_post_roundtable_sha256`. The pre-roundtable sha256
+  stays in `state.implementation_plan_sha256` for diff audit.
+- If the consensus editor cannot preserve every plan requirement without human
+  repair, it returns `BLOCKED_SPEC_REWRITE` and orchestrator stops here.
+
+Step 4b output gates Step 5: plan-integrity review reads
+`implementation_plan_post_roundtable_sha256` (or the same as
+`implementation_plan_sha256` if Step 4b was a no-op rewrite).
 
 ---
 

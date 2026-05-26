@@ -752,9 +752,17 @@ suggested next step (e.g., "extend file_scope to include X", "split phase Pn int
   "model_requests": [
     {
       "role": "verifier",
-      "requested": "gpt-5.5/medium",
-      "actual": "gpt-5.4/medium",
-      "reason": "gpt-5.5 unavailable"
+      "requested": "gpt-5.5/xhigh",
+      "actual": "gpt-5.4/high",
+      "reason": "gpt-5.5 unavailable",
+      "model_degraded": true
+    },
+    {
+      "role": "worker",
+      "requested": "claude-sonnet-4-6",
+      "actual": "claude-sonnet-4-6",
+      "reason": "tier=sonnet",
+      "model_degraded": false
     }
   ],
   "agents": [
@@ -809,8 +817,8 @@ suggested next step (e.g., "extend file_scope to include X", "split phase Pn int
 | Plan writer | Claude opus via Agent tool | — | — |
 | Plan integrity review (primary) | Claude opus via Agent tool | — | — |
 | Plan integrity review (secondary) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
-| Phase worker | Codex GPT-5.5 via codex exec | medium → high on retry | gpt-5.4 medium |
-| Phase verifier | Codex GPT-5.5 via codex exec | medium | gpt-5.4 medium |
+| Phase worker | **Claude** via `Agent` tool — `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | — | escalate `model_tier` one step (sonnet→opus, haiku→sonnet) on retry, log as `model_degraded=true` |
+| Phase verifier | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
 | Decision gate (primary) | Claude opus via Agent tool | — | — |
 | Decision gate (secondary) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
 | Final E2E2 report | Claude opus via Agent tool | — | — |

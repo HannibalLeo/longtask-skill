@@ -150,10 +150,18 @@ fills in placeholder text to "make it complete".
    - `verify_passes_when`
    - `max_retry_rounds`
    - `dod`
-6. Phase body must remain Codex-executable. Reject and block plan output when
-   any phase body requires:
+
+   Each phase MAY also include:
+   - `model_tier` — one of `haiku` | `sonnet` | `opus`. Overrides the
+     top-level `default_model_tier` for this phase's worker dispatch. Use
+     `opus` for phases with cross-module reasoning, novel design choices, or
+     fragile mechanical refactors; `sonnet` for the bulk of well-scoped
+     implementation work; `haiku` for trivially mechanical phases (rare).
+     Omit to inherit `default_model_tier`.
+6. Phase body must remain worker-executable by a fresh Claude Agent worker.
+   Reject and block plan output when any phase body requires:
    - `/skill` dispatch
-   - `Agent` or `Skill` tool use
+   - `Skill` tool use
    - browser/screenshot/web work inside the phase body
    - subjective LLM-only DoD
    - missing `verify_cmd`
@@ -168,6 +176,12 @@ fills in placeholder text to "make it complete".
    - `final_verify_cmd`
    - `final_e2e2_cmd`
    - `final_report_path`
+   - `default_model_tier` — one of `haiku` | `sonnet` | `opus`. Default
+     model for every phase worker dispatch. **Required**; absent →
+     `BLOCKED_SPEC_REWRITE`. Set to `sonnet` unless the spec as a whole
+     has a strong reason to default higher (e.g. plans dominated by novel
+     architecture work) or lower (e.g. plans dominated by trivially
+     mechanical phases).
 8. The final E2E2 command must produce or support screenshots. If no credible
    E2E2 screenshot path exists, stop with `BLOCKED_SPEC_REWRITE` and explain
    the missing prerequisite instead of weakening the gate.
@@ -201,6 +215,7 @@ enhanced_spec_sha256: "..."
 final_verify_cmd: "..."
 final_e2e2_cmd: "..."
 final_report_path: ".longtask/reports/<spec>/final-report.md"
+default_model_tier: sonnet   # haiku | sonnet | opus — see No-Loss Rules #7
 ---
 
 # Implementation Plan / Execution Spec
@@ -244,6 +259,7 @@ do_not_touch: [.env*, data/**]
 verify_cmd: "command"
 verify_passes_when: "exit 0 and named checks pass"
 max_retry_rounds: 3
+# model_tier: opus     # optional — overrides default_model_tier for this phase
 dod:
   - "Concrete criterion"
 ```

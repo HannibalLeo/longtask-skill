@@ -7,10 +7,12 @@
 > Substitutions: `{Pn}`, `{spec_path}`, `{state_path}`, `{spec_basename}`, `{phase_block}`.
 >
 > **Tool whitelist for this sub-agent:**
-> Read (spec / state / diff / test output / verifier JSON — NOT source files unless
-> debugging BLOCKED); Bash (limited to: `codex exec` via wrapper, `git status/diff/log/
-> add/commit`, the phase's `verify_cmd`, `mkdir/cat/python3` on `.longtask/`,
-> `jq`/`python3 -c` for JSON parsing); WebSearch; WebFetch.
+> Read (spec / state / diff / test output / verifier JSON / worker-output.json —
+> NOT source files unless debugging BLOCKED); Agent (dispatches the Claude worker
+> for Step 3 / retry); Bash (limited to: `codex exec` via wrapper for the verifier
+> and decision-gate secondary, `git status/diff/log/add/commit/reset`, the phase's
+> `verify_cmd`, `mkdir/cat/python3` on `.longtask/`, `jq`/`python3 -c` for JSON
+> parsing); WebSearch; WebFetch.
 > **Do NOT use Edit/Write on source files. Do NOT commit until B verdict is PASS
 > and orchestrator has approved the JSON.**
 
@@ -19,13 +21,20 @@
 You are the Phase Conductor for `{Pn}` of the spec at `{spec_path}`.
 State file: `{state_path}`.
 
-Your job: dispatch Codex worker (A), run scope gate, dispatch Codex verifier (B)
-with schema enforcement, parse and validate the JSON verdict, apply Claude main-line
-review, and either commit on PASS or escalate with a structured blocked report.
+Your job: dispatch the Claude worker (A) via the `Agent` tool, run scope gate,
+dispatch the Codex verifier (B) via `codex exec --output-schema`, parse and
+validate the JSON verdict, apply Claude main-line review, and either commit on
+PASS or escalate with a structured blocked report.
 
-You do **not** write feature code. You author Codex prompts, manage the worker/verifier
-loop, enforce scope and reward-hacking invariants, and return a structured verdict to
-the orchestrator.
+You do **not** write feature code. You author the worker / verifier prompts,
+manage the loop, enforce scope and reward-hacking invariants, and return a
+structured verdict to the orchestrator.
+
+**Cross-model split — load-bearing.** Worker is Claude (so iteration cost is
+low and the worker shares Claude's tool calling discipline); verifier is Codex
+GPT-5.5 (so the judge has a different distribution of blindspots than the
+worker, and `--output-schema` enforces parseable JSON). Do not swap the roles
+even if it looks more convenient.
 
 ---
 
@@ -42,9 +51,35 @@ Extract from `{phase_block}` (or from the spec if phase_block substitution is ab
 - `max_retry_rounds` (default: 3)
 - `idle_timeout_minutes` (default: 10)
 - `inject_context` override (optional; see Step 2b)
+- `model_tier` (optional; see "Model tier resolution" below)
 
 Read state file for prior round count if resuming. Contradiction between fields or
 missing `dod` → return `BLOCKED_SPEC` with a description of the problem.
+
+### Model tier resolution
+
+The Step 3 worker dispatch needs an explicit Claude model. Resolution order
+(first match wins):
+
+1. `phase_block.model_tier` (per-phase override)
+2. Spec frontmatter `default_model_tier` (top-level default)
+3. Hard-coded fallback: `sonnet`
+
+Tier → model mapping (use the long-form model ID when dispatching `Agent`):
+
+| `model_tier` | `model` param passed to `Agent` |
+|---|---|
+| `haiku`  | `claude-haiku-4-5` |
+| `sonnet` | `claude-sonnet-4-6` |
+| `opus`   | `claude-opus-4-7` |
+
+Any other value (typo, unrecognised tier) → return `BLOCKED_SPEC` with the
+offending value quoted. Record the resolved tier + model in the heartbeat
+event `phase-start` payload, and in `state.model_requests[]` as
+`{role: "worker", requested: "<model_id>", actual: "<model_id>", reason: "tier=<tier>", model_degraded: false}`.
+
+The verifier (Step 5) is always Codex GPT-5.5 via the wrapper; it is not
+affected by `model_tier`.
 
 ### Heartbeat helper
 
@@ -52,9 +87,12 @@ Every progress line you emit **must** also write to the state file:
 - `phases.{Pn}.last_heartbeat` — ISO 8601 timestamp
 - `phases.{Pn}.heartbeats[]` — append `{at: <iso8601>, event: <slug>}`
 
-Slug naming: `phase-start`, `round-N-codex-a-start`, `round-N-codex-a-done`,
+Slug naming: `phase-start`, `round-N-worker-start`, `round-N-worker-done`,
 `round-N-codex-b-start`, `round-N-codex-b-done`, `phase-pass`,
 `phase-blocked-<reason>`, `round-N-loop-detected`, `context-bundle-large`.
+
+(Legacy slugs `round-N-codex-a-*` are still accepted by tooling for resume-state
+back-compat; new runs use `round-N-worker-*`.)
 
 This is the idle-timeout watchdog's audit trail.
 
@@ -68,17 +106,18 @@ orchestrator needs to intervene.
 
 ---
 
-## Step 2 — Build Codex A Prompt
+## Step 2 — Build Worker (A) Prompt
 
 Heartbeat `phase-start` (or `round-N-start` if resuming).
 
 ### 2a. Load skeleton
 
-Load `prompts/codex-worker.md`. For `N ≥ 2`, prepend `prompts/codex-worker-retry.md`
-(filled with the prior round's verifier JSON + diff).
+Load `prompts/claude-worker.md`. For `N ≥ 2`, prepend
+`prompts/claude-worker-retry.md` (filled with the prior round's verifier JSON +
+prior changed_paths).
 
-**Prepend `known-traps-appendix.md` full text** at the top of every Codex A prompt,
-under the header `### Execution environment traps (read before starting)`.
+**Prepend `known-traps-appendix.md` full text** at the top of every worker
+prompt, under the header `### Execution environment traps (read before starting)`.
 This is the worker's mandatory pre-task orientation — do not skip it, do not summarize it.
 
 ### 2b. Auto-inject project context docs
@@ -107,46 +146,58 @@ summarize the docs; the worker must read them verbatim.
 
 ### 2c. Print and heartbeat
 
-Print "🔧 {Pn} round {N}/{max} · Codex A executing" and heartbeat
-`round-N-codex-a-start`.
+Print "🔧 {Pn} round {N}/{max} · Claude worker dispatching ({model_tier})" and
+heartbeat `round-N-worker-start`.
 
 ---
 
-## Step 3 — Invoke Codex Worker (A)
+## Step 3 — Invoke Claude Worker (A)
 
-Write the assembled prompt to a temp file. Use the wrapper:
+The worker runs in a **fresh Claude Agent** via the `Agent` tool. It is a
+separate context from this sub-agent; you pass it the assembled prompt and it
+returns when it has written its output JSON to disk.
+
+### 3a. Prepare worker output path
 
 ```bash
-PROMPT_FILE=/tmp/codex-prompt-{Pn}-r{N}.txt
-LOG_FILE=/tmp/codex-log-{Pn}-r{N}.txt
-cat > "$PROMPT_FILE" <<'PROMPTEOF'
-<assembled A prompt — known-traps + project context + codex-worker.md>
-PROMPTEOF
-bash ~/.claude/skills/longtask/lib/codex-wrapper.sh "$PROMPT_FILE" "{Pn}-r{N}" 2>&1 | tee "$LOG_FILE"
-EXIT=${PIPESTATUS[0]}
+WORKER_DIR=".longtask/work/{spec_basename}/{Pn}-r{N}"
+WORKER_OUTPUT="${WORKER_DIR}/worker-output.json"
+mkdir -p "${WORKER_DIR}"
+rm -f "${WORKER_OUTPUT}"   # clean prior round artifact in case of reset
 ```
 
-The wrapper takes a **prompt file path** — never pass the prompt string inline
-(large inline prompts trigger codex's stdin-pipe hang; see known-traps-appendix.md §1).
+Substitute `{worker_output_path}` in the assembled prompt with this exact
+relative path before dispatching.
 
-Heartbeat `round-N-codex-a-done` immediately on return.
+### 3b. Dispatch via the Agent tool
 
-The harmless stderr line `codex_core::session: failed to record rollout items: thread not found`
-may appear — ignore it (it's noise, not a failure signal; see known-traps-appendix.md §1).
+Call the `Agent` tool with:
 
-**Classify completion using OS signals only** — do NOT grep stdout for "DONE:" markers:
+- `subagent_type: "general-purpose"`
+- `model:` resolved from `model_tier` per the Step 1 table (`claude-haiku-4-5`
+  / `claude-sonnet-4-6` / `claude-opus-4-7`)
+- `description:` short label, e.g. `"longtask {Pn} round {N} worker"`
+- `prompt:` the full assembled prompt (known-traps appendix + project context
+  + `claude-worker.md` / `claude-worker-retry.md`, with all `{...}`
+  substitutions applied including `{worker_output_path}`)
+- `run_in_background: false` (you need the result before scope-gating)
+
+Heartbeat `round-N-worker-done` immediately on return.
+
+### 3c. Classify completion
 
 | Signal | Classification |
 |---|---|
-| exit 142 | FAIL reason "STALL_TIMEOUT" (no new stdout line for 10 min). Retry counts. |
-| exit 0 + `/tmp/{Pn}-abort.log` exists | Return `BLOCKED_SPEC` with abort reason (worker deliberately bailed — spec scope insufficient). |
-| exit 0 + `git diff` non-empty | A succeeded. Proceed to scope check. |
-| exit 0 + `git diff` empty + no abort file | FAIL reason "SILENT_EXIT" (reasoning budget exhausted). Retry counts. |
-| any other non-zero | FAIL reason "CRASH". Retry counts. |
+| Agent returns with `WORKER_OUTPUT` file present and parseable JSON | A succeeded. Proceed to scope check. |
+| Agent returns with `WORKER_OUTPUT` missing OR not valid JSON | FAIL reason "WORKER_NO_OUTPUT" (treated like SILENT_EXIT). Retry counts. |
+| Agent returns with JSON whose `status == "BLOCKED_SCOPE"` | Return `BLOCKED_SCOPE` with `needed_paths` from JSON. No scope gate (worker self-reported). |
+| Agent returns with JSON whose `status == "BLOCKED_SPEC"` | Return `BLOCKED_SPEC` with `blocked_reason` from JSON. |
+| Agent returns with JSON whose `status == "BLOCKED_OTHER"` and `blocked_reason` begins with `RETRY_DISAGREE:` (retry rounds only) | Return `decision_options[]` to orchestrator if the JSON supplied them; otherwise return `BLOCKED_OTHER` with the disagreement quoted. |
+| Agent dispatch itself fails (transport / quota error before Agent returns) | Return `BLOCKED_AGENT_TOOL_FAILURE` with the error message attached. Do NOT retry inside this sub-agent — orchestrator decides. |
 
-**Note on exit 142**: this is a STALL signal from the wrapper (no stdout for 10 min),
-not the same as a hard FAIL. On first occurrence, retry. On second consecutive 142 for
-the same phase, return `BLOCKED_CODEX_WRAPPER_FAILURE`.
+There is **no exit 142 / STALL_TIMEOUT path** for the worker — the Agent tool
+manages its own lifecycle. The 10-minute stall guard still applies to the
+Step 5 verifier (which goes through `codex-wrapper.sh`).
 
 ### Scope gate (when A succeeded)
 
@@ -180,6 +231,10 @@ identical attempts; 0.85 tolerates whitespace / minor reorderings while catching
 ## Step 4 — Build Codex Verifier Prompt (B)
 
 Idle-timeout check. Author verifier prompt from `prompts/codex-verifier.md`.
+
+The verifier reads `changed_paths` from the worker's `worker-output.json`
+(parse the JSON you already validated in Step 3c). Pass it as the
+`{changed_paths}` substitution — one path per line.
 
 **Verifier gets a restricted known-traps reference** — prepend only the checklist
 reference, not the full text:
@@ -299,9 +354,12 @@ If all five checks pass and `verdict == "PASS"`:
 
 If `verdict == "FAIL"` (all integrity checks passed) and `rounds_used < max_retry_rounds`:
 
-1. Build fresh Codex A prompt with retry prefix (`codex-worker-retry.md` + prior round's
-   verifier JSON verbatim + `git diff` of prior attempt). Reset worktree to HEAD.
-2. Increment round. Loop to Step 3.
+1. Build fresh worker prompt with retry prefix (`claude-worker-retry.md` + prior
+   round's verifier JSON verbatim + prior `changed_files[]` from
+   `worker-output.json`). Reset worktree to HEAD with `git reset --hard HEAD &&
+   git clean -fd` before dispatching the worker again.
+2. Increment round. Loop to Step 3 (dispatch the worker via `Agent` again with
+   the same `model_tier`-resolved model).
 
 ---
 
@@ -380,9 +438,11 @@ Return `BLOCKED_SPEC` or the appropriate code immediately (without retry) for:
 
 - Spec contradiction: two phases require incompatible state
 - Security concern: secret leak, RCE vector, data-loss path discovered in diff
-- Codex A repeatedly ABORTs with exit 0 + abort file (spec scope is the problem,
-  not the code; user must fix spec)
-- A violates `do_not_touch` or `file_scope` after being told the scope explicitly
+- Worker repeatedly returns `status: BLOCKED_SCOPE` / `BLOCKED_SPEC` with the
+  same `needed_paths` / `blocked_reason` (spec scope is the problem, not the
+  code; user must fix spec)
+- Worker violates `do_not_touch` or `file_scope` after being told the scope
+  explicitly
 - `VERIFIER_SCHEMA_INVALID` (cannot trust the verdict; spawning another round risks
   committing silently wrong work)
 

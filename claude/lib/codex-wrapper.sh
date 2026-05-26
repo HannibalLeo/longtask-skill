@@ -5,11 +5,14 @@
 # (~/.codex/skills/longtask/lib/codex-wrapper.sh) in the following ways:
 #
 #   1. Default model / reasoning:
-#      - CODEX_LONGTASK_MODEL   = gpt-5.5   (Codex side: gpt-5.4)
+#      - CODEX_LONGTASK_MODEL   = gpt-5.5   (Codex-side now also gpt-5.5)
 #      - CODEX_LONGTASK_REASONING = xhigh   (Codex side: medium)
-#      Rationale: Claude harness dispatches codex only for heavy-IO phase
-#      workers and hybrid-judgment gates; these need max reasoning quality
-#      to justify the cross-model round-trip.  See design spec decision #7.
+#      Rationale (v0.4): the Step 6 phase worker moved to Claude via the
+#      Agent tool, so this wrapper now only serves the verifier, judgment
+#      gates, and roundtable lenses — all reasoning-heavy roles where
+#      `xhigh` pays for itself.  Codex-side wrapper stays at `medium`
+#      because its primary caller (the codex-only longtask worker) is the
+#      cost-dominant path there.  See design spec decision #7.
 #
 #   2. Structured output params (new vs old Claude wrapper):
 #      - OUTPUT_SCHEMA (arg 3): path to a JSON Schema file; passed as

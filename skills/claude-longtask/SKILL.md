@@ -1,6 +1,6 @@
 ---
 name: longtask
-description: Multi-phase spec execution — Claude opus orchestrator + per-phase Codex GPT-5.5 worker/verifier via `codex exec`, with cross-rounds roundtable (codex lenses → codex mid-summary → claude lenses → claude end-summary, repeated 1-3 rounds per stage) and opus 4.7 max terminal review. Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
+description: Multi-phase spec execution — Claude opus orchestrator + per-phase Claude worker (sonnet/opus, tier-selectable per phase) + Codex GPT-5.5 verifier via `codex exec --output-schema`, with cross-rounds roundtable (codex lenses → codex mid-summary → claude lenses → claude end-summary, repeated 1-3 rounds per stage) and opus 4.7 max terminal review. Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
 ---
 
 # /longtask — v0.4 cross-rounds (Claude + Codex)
@@ -21,10 +21,20 @@ Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
 |---|---|---|
 | **(a) Claude does architecture** | Claude opus (main session + Agent tool) | Spec classification, plan writing, plan-integrity review. All "understand the spec, split it, decide who verifies" judgments. |
 | **(b) Claude + Codex discuss** | Mixed | Cross-rounds roundtable (v0.4): every round is a cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses → claude opus end-summary). Lenses are NOT model-bound — every lens runs both codex and claude per round. Consensus editor is single Claude opus; cross-rounds-final-review (opus 4.7 max) is the terminal gate. |
-| **(c) Codex does the work** | Codex GPT-5.5 via `codex exec` | Phase worker writes code; phase verifier produces schema-driven JSON. Heavy I/O (file reads, test runs) stays out of the Claude main-line context. |
+| **(c) Claude worker writes; Codex verifier judges** | Claude (sonnet default, opus / haiku per `model_tier`) via Agent tool + Codex GPT-5.5 via `codex exec --output-schema` | Phase worker writes code in a fresh Claude Agent; phase verifier is a separate Codex GPT-5.5 process that re-reads the working tree, runs `verify_cmd`, and emits schema-driven JSON. The cross-model split is load-bearing: the judge has a different distribution of blindspots than the worker, and `--output-schema` enforces parseable JSON regardless of how the worker phrased its own progress. |
 | **(d) Claude finalizes** | Claude opus (main session) | Reads every verifier JSON to decide PASS/retry, runs hybrid decision/plan-integrity/final-alignment gates, runs final E2E2 (browser/screenshots via Claude harness), syncs docs, ships. |
 
-**Load-bearing invariant for (c)→(d):** Codex writes structured JSON via `--output-schema`; Claude reads that JSON and applies the final PASS/FAIL judgment. Claude does **not** read source files (preserves context). Claude **does** hold final authority (preserves safety).
+**Load-bearing invariants for (c)→(d):**
+
+1. **Worker is Claude, verifier is Codex.** This is the cross-model split. Do
+   not swap roles even if it looks more convenient. Worker = `claude-{tier}`
+   selected per phase; verifier = Codex GPT-5.5 (`gpt-5.5/xhigh` default via
+   `lib/codex-wrapper.sh`).
+2. **Codex emits schema-conforming JSON, Claude reads it.** The verifier uses
+   `codex exec --output-schema schemas/verifier-result.schema.json` so the
+   verdict is parseable by construction. The Claude sub-agent and main
+   session never read source files during PASS/FAIL judgment (preserves
+   context budget) but hold final authority (preserves safety).
 
 ## Pipeline overview (v0.4)
 
@@ -44,7 +54,7 @@ Step 4b Plan-roundtable        (ALWAYS RUN, cross_rounds ≥ 1) Same cross-pair 
                                → plan-consensus-editor (single Claude opus, rewrites plan.md in place)
                                → cross-rounds-final-review (opus 4.7 max, terminal verdict)
 Step 5  Plan-integrity         HYBRID gate (Claude primary + Codex secondary) → PASS or BLOCKED_SPEC_REWRITE
-Step 6  Per-phase loop         For each Pn: Claude sub-agent dispatches Codex worker → scope gate → Codex verifier (schema)
+Step 6  Per-phase loop         For each Pn: Claude sub-agent dispatches Claude worker (Agent tool, model from model_tier) → scope gate → Codex verifier (codex exec --output-schema)
                                → main-line JSON review → commit on PASS
 Step 7  Final E2E2             Claude Agent runs final_verify_cmd + final_e2e2_cmd → screenshots → final_report
 Step 8  Final-alignment        MANDATORY DUAL hybrid gate (Claude + Codex always both run) → PASS or escalate
@@ -111,6 +121,16 @@ final_e2e2_cmd: "gstack browse-e2e --scenarios=docs/CRITICAL_PATH.md --screensho
 
 final_report_path: .longtask/reports/{spec_basename}/final-report.md
 # Required. Where final-e2e2-report writes the artifact.
+
+default_model_tier: sonnet   # one of: haiku | sonnet | opus
+# Required (v0.4+). Default Claude model the Step 6 per-phase worker runs on.
+# Tier → model:
+#   haiku  → claude-haiku-4-5   (mechanical / trivial phases only)
+#   sonnet → claude-sonnet-4-6  (DEFAULT — covers most implementation work)
+#   opus   → claude-opus-4-7    (novel design, cross-module, fragile refactors)
+# Resolution order at dispatch time:
+#   phase.model_tier  >  spec.default_model_tier  >  hard fallback 'sonnet'
+# Missing → BLOCKED_SPEC. Unrecognised tier → BLOCKED_SPEC.
 
 # === OPTIONAL v2 fields ===
 
@@ -188,6 +208,9 @@ max_retry_rounds: 3
 cost_budget_usd: 5
 idle_timeout_minutes: 10
 
+# Optional per-phase override; falls back to spec.default_model_tier.
+# model_tier: opus   # one of: haiku | sonnet | opus
+
 # === v2 additions ===
 source_requirements: [REQ-001, REQ-002]
 # Required for traceability. List of REQ-* anchors from source_spec this phase
@@ -227,8 +250,11 @@ Claude main session (opus)                = Orchestrator
   ↓
 Claude Sub-Agent (opus, fresh per phase)  = Phase Conductor
   ├─ runs per-phase loop end-to-end
-  ├─ dispatches `codex exec` children for:
-  │     codex-worker (writes code)
+  ├─ resolves model_tier (phase override > spec default > 'sonnet') → model id
+  ├─ dispatches Claude worker via Agent tool:
+  │     claude-worker  (writes code, writes worker-output.json)
+  │     claude-worker-retry (carries prior verifier JSON)
+  ├─ dispatches `codex exec` verifier:
   │     codex-verifier (--output-schema verifier-result.schema.json)
   ├─ enforces scope gate (git diff --name-only vs file_scope)
   ├─ reads verifier JSON, applies main-line PASS/FAIL
@@ -236,10 +262,12 @@ Claude Sub-Agent (opus, fresh per phase)  = Phase Conductor
   │     decision-review gate
   └─ commits on PASS, returns {verdict, rounds_used, commit_sha} to orchestrator
   ↓
+Claude worker children (Agent tool, one-shot, model from model_tier)
+  ├─ claude-worker         — writes code in file_scope; writes worker-output.json
+  └─ claude-worker-retry   — fed prior verifier JSON; same output contract
+  ↓
 codex exec children (one-shot, GPT-5.5)
-  ├─ codex-worker          — writes code in file_scope only
   ├─ codex-verifier        — read-only; runs verify_cmd; produces schema JSON
-  ├─ codex-worker-retry    — fed prior verifier JSON; fixes verifier-cited issues
   ├─ roundtable codex lens — Phase 1 of each cross-pair round, all lenses parallel
   ├─ codex mid-summary     — Phase 2 of each cross-pair round, xhigh
   └─ judgment secondary    — plan-integrity / decision-review / final-alignment
@@ -248,8 +276,8 @@ codex exec children (one-shot, GPT-5.5)
 | Tier | Reads source files? | Writes code? | Commits? | Persistence |
 |---|---|---|---|---|
 | **Orchestrator (Claude main)** | spec + state + JSON outputs only | NO | NO | survives whole spec |
-| **Sub-Agent (Claude Agent)** | spec + git diff + verifier JSON + state | NO (only authors codex prompts) | YES (after main-line PASS) | per phase, killed on DONE |
-| **codex-worker** | spec + scoped files | YES (working tree only) | NO | one-shot per round |
+| **Sub-Agent (Claude Agent, opus)** | spec + git diff + verifier JSON + worker-output.json + state | NO (only authors worker / verifier prompts) | YES (after main-line PASS) | per phase, killed on DONE |
+| **claude-worker** | spec + scoped files | YES (working tree only, file_scope) | NO | one-shot per round; output is worker-output.json |
 | **codex-verifier** | spec + working tree + verify_cmd output | NO | NO | one-shot per round; output is JSON |
 
 ## Role × Model dispatch matrix (v0.4)
@@ -274,7 +302,7 @@ codex exec children (one-shot, GPT-5.5)
 | **Plan consensus editor** (single author, v0.4) | Claude opus | Agent tool | (b) |
 | **Plan cross-rounds final review** | **Claude opus 4.7 max** | Agent tool | **(b)+(d)** |
 | **Plan-integrity review** | **Claude opus primary + Codex GPT-5.5 xhigh secondary** | hybrid (decision #6) | **(a)+(d)** |
-| Phase worker | Codex GPT-5.5 (default xhigh; downgrade to high acceptable) | `codex exec` via wrapper | (c) |
+| Phase worker | **Claude** — model selected per phase: `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | `Agent` tool (one fresh Agent per round) | (c) |
 | **Phase verifier** | Codex GPT-5.5 (schema-driven JSON) → Claude main-line reads JSON | `codex exec --output-schema` → Claude review | **(c)→(d)** |
 | **Decision gate** | **Claude opus primary + Codex GPT-5.5 xhigh secondary** | hybrid (decision #6) | **(b)+(d)** |
 | Final E2E2 report | Claude opus | Agent tool (gstack browse skill) | (d) |
@@ -364,9 +392,11 @@ Reconciliation rules (each gate prompt restates these so reviewers know their `v
 ## Phase verifier flow (the (c)→(d) handoff)
 
 ```
-Codex worker writes code (working tree mutations only)
+Claude worker (Agent tool, model from model_tier) writes code +
+  worker-output.json (working tree mutations only, no commit)
          ↓
-Claude sub-agent: git status --porcelain + git diff --name-only HEAD
+Claude sub-agent: parse worker-output.json; git status --porcelain +
+  git diff --name-only HEAD
          ↓ (hard scope gate)
                 paths all in file_scope?  → no → BLOCKED_SCOPE
                                           → yes → continue
@@ -388,12 +418,18 @@ Claude sub-agent reads JSON (does NOT read source):
   5. root_cause_hint sensible? (FAIL especially)
          ↓
 PASS → docs_sync (if enabled) → commit → report PASS to orchestrator
-FAIL → spawn codex-worker-retry with prior verifier JSON embedded → next round
-       (up to max_retry_rounds)
+FAIL → reset worktree → spawn claude-worker-retry (same model_tier) with prior
+       verifier JSON embedded → next round (up to max_retry_rounds)
 After max retries exhausted → BLOCKED + escalate to orchestrator
 ```
 
-**Load-bearing invariant:** Codex writes JSON; Claude reads JSON. Claude does not read source files (context preservation); Claude holds the final PASS/FAIL judgment (safety).
+**Load-bearing invariants:**
+
+1. Worker = Claude Agent; verifier = Codex `codex exec --output-schema`.
+   Cross-model heterogeneity prevents reward-hacking and reduces shared blindspots.
+2. Codex emits JSON; Claude reads JSON. Claude sub-agent does not read source
+   files during PASS/FAIL judgment (context preservation); Claude holds the
+   final PASS/FAIL judgment (safety).
 
 ## BLOCKED enum (10 codes)
 
@@ -421,10 +457,18 @@ The enum is stable. Detailed stderr/exit/repro lives in the per-BLOCKED report, 
 
 ## Codex CLI invocation (`lib/codex-wrapper.sh`)
 
-All Codex children — workers, verifiers, secondary reviewers — go through `lib/codex-wrapper.sh`. It is a stall-only wrapper around `codex exec` with v2 additions:
+All remaining Codex children — **phase verifier** (Step 6), roundtable lenses
+(Steps 2 / 4b), roundtable mid-summary, codex spec sanity (Step 3),
+plan-integrity / decision-review / final-alignment secondaries — go through
+`lib/codex-wrapper.sh`. **The Step 6 worker no longer uses this wrapper** —
+worker dispatch moved to the `Agent` tool with model resolved per phase from
+`model_tier`. It is a stall-only wrapper around `codex exec` with v2 additions:
 
 - **Default model** = `gpt-5.5` (env: `CODEX_LONGTASK_MODEL`)
-- **Default reasoning** = `xhigh` (env: `CODEX_LONGTASK_REASONING`)
+- **Default reasoning** = `xhigh` (env: `CODEX_LONGTASK_REASONING`) — kept at
+  `xhigh` because the wrapper now only serves the verifier and judgment-gate
+  roles where reasoning quality is load-bearing; the worker (previously the
+  cost-dominant caller at `xhigh`) is on Claude now and pays no cost here.
 - **Sandbox** = `workspace-write` (env: `CODEX_LONGTASK_SANDBOX`)
 - **Approvals** = `never` (env: `CODEX_LONGTASK_APPROVALS`) — no in-phase approval prompts
 - **Stall kill** = 10 min no new stdout line → exit 142 (env: `CODEX_LONGTASK_STALL_SECONDS`)
@@ -516,10 +560,12 @@ Minimal example (one phase mid-run):
 │   ├── plan-integrity-review.md              # hybrid: Claude primary + Codex secondary
 │   ├── decision-review.md                    # hybrid: Claude primary + Codex secondary
 │   ├── final-alignment-review.md             # hybrid: MANDATORY DUAL
-│   # === Step 6 codex children ===
-│   ├── codex-worker.md                       # codex exec (writes code)
+│   # === Step 6 children ===
+│   ├── claude-worker.md                      # Agent tool (writes code; model from model_tier)
+│   ├── claude-worker-retry.md                # Agent tool retry (carries prior verifier JSON)
 │   ├── codex-verifier.md                     # codex exec --output-schema (JSON verdict)
-│   ├── codex-worker-retry.md                 # carries prior verifier JSON
+│   ├── codex-worker.md                       # LEGACY — kept for codex-longtask variant
+│   ├── codex-worker-retry.md                 # LEGACY — kept for codex-longtask variant
 │   # === Step 7 ===
 │   ├── final-e2e2-report.md                  # Claude Agent (gstack browse / screenshots; proactive residual-risk flagging)
 │   # === Cross-cutting ===

@@ -11,11 +11,19 @@
 #     <prompt_file> <run_id> [output_schema_json] [last_message_json]
 #
 # Environment:
-#   CODEX_LONGTASK_MODEL       default: gpt-5.4
+#   CODEX_LONGTASK_MODEL       default: gpt-5.5
 #   CODEX_LONGTASK_REASONING   default: medium
 #   CODEX_LONGTASK_SANDBOX     default: workspace-write
 #   CODEX_LONGTASK_APPROVALS   default: never (passed as approval_policy config)
 #   CODEX_LONGTASK_REPO        optional: repo cwd for the child
+#
+# Defaults rationale (v0.4):
+#   - Model bumped gpt-5.4 → gpt-5.5 to stay aligned with the Claude-side
+#     wrapper and avoid silent capability drift between the two harnesses.
+#   - Reasoning kept at `medium` (not `xhigh`) because this wrapper drives the
+#     codex-only longtask path; the cost-dominant caller there is the phase
+#     worker, where `medium` is the right cost / quality balance. Override per
+#     call when a single phase needs more headroom.
 #
 # Exit codes:
 #   0   codex completed
@@ -36,7 +44,7 @@ if [ -z "$PROMPT_FILE" ] || [ ! -f "$PROMPT_FILE" ]; then
   exit 2
 fi
 
-MODEL="${CODEX_LONGTASK_MODEL:-gpt-5.4}"
+MODEL="${CODEX_LONGTASK_MODEL:-gpt-5.5}"
 REASONING="${CODEX_LONGTASK_REASONING:-medium}"
 SANDBOX="${CODEX_LONGTASK_SANDBOX:-workspace-write}"
 APPROVALS="${CODEX_LONGTASK_APPROVALS:-never}"

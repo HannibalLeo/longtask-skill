@@ -1,6 +1,6 @@
 ---
 name: longtaskCode
-description: Plan-to-shipped-code execution pipeline — runs Steps 6 through 9 of /longtask:longtask (per-phase loop with codex worker/verifier → final E2E2 + screenshots → final-alignment-review → optional ship). Input is a validated implementation plan (typically the output of /longtask:longtaskPlan, or a hand-written plan that satisfies the v2 frontmatter contract). Use when planning is already settled and you want execution-only. Triggers on /longtask:longtaskCode, "execute plan", "run plan", "build phases", "code from plan".
+description: Plan-to-shipped-code execution pipeline — runs Steps 6 through 9 of /longtask:longtask (per-phase loop with Claude worker (sonnet/opus per model_tier) via Agent tool + Codex GPT-5.5 verifier via codex exec --output-schema → final E2E2 + screenshots → final-alignment-review → optional ship). Input is a validated implementation plan (typically the output of /longtask:longtaskPlan, or a hand-written plan that satisfies the v2 frontmatter contract). Use when planning is already settled and you want execution-only. Triggers on /longtask:longtaskCode, "execute plan", "run plan", "build phases", "code from plan".
 ---
 
 # /longtask:longtaskCode — Steps 6-9 of /longtask:longtask
@@ -15,8 +15,9 @@ The planning-half companion is [/longtask:longtaskPlan](../longtask:longtaskPlan
 `longtaskPlan` + `longtaskCode` together equal `longtask`; you can also run
 `longtaskCode` independently against a hand-written plan that already satisfies
 the v2 frontmatter contract (`source_spec_path`, `source_spec_sha256`,
-`final_verify_cmd`, `final_e2e2_cmd`, `final_report_path`, plus per-phase
-schema).
+`final_verify_cmd`, `final_e2e2_cmd`, `final_report_path`,
+`default_model_tier`, plus per-phase schema — optional `model_tier` overrides
+the default per phase).
 
 ## When to use
 
@@ -43,20 +44,25 @@ Skip in favor of full `/longtask` when:
 |---|---|---|
 | (a) Architecture | — | Not in scope; plan must already be settled. (Orchestrator does still hold final judgment authority on PASS/FAIL of every per-phase verifier JSON.) |
 | (b) Discussion | Claude + Codex hybrid | Decision Gate (when a worker proposes `decision_options[]`) and Uncertainty Clarification Round are in scope. Roundtables (spec / plan) are NOT in scope — those ran in `/longtask:longtaskPlan`. |
-| **(c) Work** | Codex GPT-5.5 via `codex exec` | Phase worker writes code; phase verifier produces schema-driven JSON. The heart of this skill. |
+| **(c) Work** | **Claude worker** (model from `model_tier`: sonnet default, haiku / opus available) via Agent tool **+ Codex GPT-5.5 verifier** via `codex exec --output-schema` | Phase worker writes code in a fresh Claude Agent; phase verifier is a separate Codex GPT-5.5 process that re-reads the working tree, runs `verify_cmd`, and emits schema-driven JSON. Cross-model split is load-bearing — see [/longtask:longtask SKILL.md](../longtask/SKILL.md) §"Phase verifier flow". The heart of this skill. |
 | **(d) Final verification** | Claude opus | Reads every verifier JSON to decide PASS/retry; runs decision-review / final-alignment hybrid gates; runs final E2E2 (browser/screenshots); syncs docs; ships. |
 
 ## Pipeline (mirrors /longtask Steps 6-9)
 
 ```
 Step 6  Per-phase loop     For each Pn in plan.md (in order):
-                             - Claude sub-agent dispatches codex-worker (writes code)
+                             - Claude sub-agent resolves model_tier
+                               (phase.model_tier > spec.default_model_tier > 'sonnet')
+                             - Claude sub-agent dispatches claude-worker via Agent tool
+                               (model from resolved tier; writes code + worker-output.json)
                              - Hard scope gate (git diff --name-only vs file_scope)
-                             - Codex verifier (--output-schema verifier-result.schema.json)
+                             - Codex verifier (codex exec --output-schema
+                               verifier-result.schema.json)
                              - Main-line JSON review (verdict + reward_hacking_signals +
                                dod_results + root_cause_hint)
                              - On PASS: commit (docs_sync runs pre-commit if enabled)
-                             - On FAIL: retry up to max_retry_rounds, then BLOCKED_*
+                             - On FAIL: reset worktree, retry up to max_retry_rounds with
+                               claude-worker-retry, then BLOCKED_*
                              - On decision_options[]: Decision Gate (HYBRID)
 
 Step 7  Final E2E2          Claude Agent runs final_verify_cmd + final_e2e2_cmd →
@@ -78,10 +84,10 @@ Step 9  Ship (optional)     docs_sync → update-docs; ship → gstack /ship.
 | Step | Prompt file | Dispatch |
 |---|---|---|
 | Orchestration | `claude-orchestrator.md` | Main session reads as its checklist; runs Steps 6-9 only |
-| Step 6 sub-agent | `claude-sub-agent.md` | Claude Agent (per phase, fresh per phase) |
-| Step 6 worker | `codex-worker.md` | `codex exec` (writes code in file_scope only) |
+| Step 6 sub-agent | `claude-sub-agent.md` | Claude Agent, opus (per phase, fresh per phase) |
+| Step 6 worker | `claude-worker.md` | `Agent` tool (one fresh Agent per round; model from resolved `model_tier`) |
 | Step 6 verifier | `codex-verifier.md` | `codex exec --output-schema verifier-result.schema.json` |
-| Step 6 retry | `codex-worker-retry.md` | `codex exec` (carries prior verifier JSON) |
+| Step 6 retry | `claude-worker-retry.md` | `Agent` tool (same model_tier; carries prior verifier JSON) |
 | Step 6 decision gate | `decision-review.md` | Hybrid (Claude primary + Codex secondary) |
 | Step 6 cross-cutting | `codex-clarification.md` | One-shot tie-breaker before any uncertainty-driven ASK_HUMAN |
 | Step 6 cross-cutting | `known-traps-appendix.md` | Worker gets full text; verifier + decision gate get checklist reference |
@@ -123,7 +129,9 @@ The manifest contains `plan_path`, `plan_post_cross_rounds_sha256`,
 Orchestrator:
 1. Reads the plan file. Validates v2 frontmatter (Step 4's check applies here):
    `source_spec_path`, `source_spec_sha256`, `final_verify_cmd`,
-   `final_e2e2_cmd`, `final_report_path` MUST be present. Missing →
+   `final_e2e2_cmd`, `final_report_path`, `default_model_tier` MUST be
+   present. Missing → `BLOCKED_SPEC`. Unrecognised `default_model_tier` or
+   per-phase `model_tier` value (not in `haiku | sonnet | opus`) →
    `BLOCKED_SPEC`.
 2. Loads the source spec at `source_spec_path` and asserts its current SHA-256
    equals `source_spec_sha256`. Drift → `BLOCKED_SPEC`.

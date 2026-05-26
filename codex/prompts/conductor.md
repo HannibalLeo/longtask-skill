@@ -172,7 +172,7 @@ prevents — drop down per phase per the resolved `reasoning_effort`.
    ```bash
    PROMPT=$(mktemp /tmp/longtask-worker-{Pn}-r{N}.XXXX.txt)
    cat > "$PROMPT" <<'PROMPTEOF'
-   <assembled worker prompt — known-traps + project context + worker.md>
+   <assembled worker prompt — known-traps-universal.md (codex worker; no claude-only) + project context + worker.md>
    PROMPTEOF
    CODEX_LONGTASK_REASONING="$resolved_effort" \
    CODEX_LONGTASK_MODEL=gpt-5.5 \
@@ -197,7 +197,7 @@ prevents — drop down per phase per the resolved `reasoning_effort`.
    VERDICT=.longtask/reports/<spec>/<Pn>-r<N>-verdict.json
    mkdir -p "$(dirname "$VERDICT")"
    cat > "$B_PROMPT" <<'PROMPTEOF'
-   <assembled verifier prompt — known-traps reference + verifier.md>
+   <assembled verifier prompt — known-traps-universal.md checklist reference (cats 2 + 4) + verifier.md>
    PROMPTEOF
    CODEX_LONGTASK_REASONING="$resolved_effort" \
    CODEX_LONGTASK_MODEL=gpt-5.5 \

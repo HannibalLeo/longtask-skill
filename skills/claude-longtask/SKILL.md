@@ -618,7 +618,9 @@ Minimal example (one phase mid-run):
 │   ├── final-e2e2-report.md                  # Claude Agent (gstack browse / screenshots; proactive residual-risk flagging)
 │   # === Cross-cutting ===
 │   ├── codex-clarification.md                # one-shot codex tie-breaker before any uncertainty-driven ASK_HUMAN
-│   └── known-traps-appendix.md               # 5 categories of execution-environment traps
+│   ├── known-traps-universal.md              # Categories 1-4 (codex CLI / reward hacking / scope / verifier) — all workers + verifiers
+│   ├── known-traps-claude-only.md            # Category 5 (Claude harness specifics) — Claude workers only
+│   └── known-traps-appendix.md               # DEPRECATED pointer (2026-05-27 split for token-waste refactor)
 └── skills/
     ├── longtask/SKILL.md                     # this file — full pipeline (Steps 0-9)
     ├── longtaskPlan/SKILL.md                 # subset — Steps 0-5 (plan-only)
@@ -650,15 +652,22 @@ If the cumulative injected bundle exceeds 10 KB, the sub-agent emits a `context-
 
 ## Known traps
 
-See [`prompts/known-traps-appendix.md`](prompts/known-traps-appendix.md) for the full 5-category list:
+Split into two files per the 2026-05-27 token-waste refactor (REQ-001 / REQ-002):
 
-1. **Codex CLI quirks** — #19945 PTY workaround, prompt must be file path, exit 142 = STALL
-2. **Reward hacking patterns** — mock substitution, assert True, skip/xfail without reason, hardcoded returns, test deletion
-3. **Scope drift** — worker writes outside file_scope, modifies do_not_touch, gradual cross-round drift
-4. **Verifier integrity** — verifier writing source, skipping verify_cmd, schema-compliant but semantically empty
-5. **Claude harness specifics** — Agent tool background timeout, 1M context budget, exit 142 ≠ FAIL, /ship cannot self-retry
+- [`prompts/known-traps-universal.md`](prompts/known-traps-universal.md) — Categories 1–4 (universal across harnesses):
+  1. **Codex CLI quirks** — #19945 PTY workaround, prompt must be file path, exit 142 = STALL
+  2. **Reward hacking patterns** — mock substitution, assert True, skip/xfail without reason, hardcoded returns, test deletion
+  3. **Scope drift** — worker writes outside file_scope, modifies do_not_touch, gradual cross-round drift
+  4. **Verifier integrity** — verifier writing source, skipping verify_cmd, schema-compliant but semantically empty
+- [`prompts/known-traps-claude-only.md`](prompts/known-traps-claude-only.md) — Category 5 (Claude harness specifics only):
+  5. **Claude harness specifics** — Agent tool background timeout, 1M context budget, exit 142 ≠ FAIL, `/ship` cannot self-retry
 
-The worker prompt receives the full appendix prepended. The verifier and decision-gate prompts receive only a checklist-style reference (`See known-traps-appendix.md categories 2 (reward hacking) and 4 (verifier integrity).`).
+Dispatch rules (set by `claude-sub-agent.md` Step 2a):
+- **Claude worker** → `claude-sub-agent.md` concatenates universal + claude-only once per phase into `.longtask/known-traps-active-{spec_basename}.md`; the worker `Read`s that path as its first action (no verbatim prepend; saves ~215 lines × every worker dispatch).
+- **Codex worker** → universal only (codex has no Agent tool, no 1M context, no `/ship` Skill).
+- **Verifier / decision-gate / final-alignment** → checklist reference only: `See known-traps-universal.md categories 2 (reward hacking) and 4 (verifier integrity).`
+
+`known-traps-appendix.md` remains as a back-compat pointer to the two new files.
 
 ## Progress reporting (mandatory)
 

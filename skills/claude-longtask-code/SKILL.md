@@ -91,7 +91,7 @@ Step 9  Ship (optional)     docs_sync → update-docs; ship → gstack /ship.
 | Step 6 retry | `claude-worker-retry.md` | `Agent` tool (same model_tier; carries prior verifier JSON) |
 | Step 6 decision gate | `decision-review.md` | Hybrid (Claude primary + Codex secondary) |
 | Step 6 cross-cutting | `codex-clarification.md` | One-shot tie-breaker before any uncertainty-driven ASK_HUMAN |
-| Step 6 cross-cutting | `known-traps-appendix.md` | Worker gets full text; verifier + decision gate get checklist reference |
+| Step 6 cross-cutting | `known-traps-universal.md` + `known-traps-claude-only.md` | Claude worker `Read`s `.longtask/known-traps-active-{spec_basename}.md` (universal + claude-only, concatenated once per phase by `claude-sub-agent.md`); codex worker / verifier / decision gate get checklist reference to universal only. `known-traps-appendix.md` is a back-compat pointer. |
 | Step 7 | `final-e2e2-report.md` | Claude Agent (gstack browse / screenshots; proactive residual-risk flagging) |
 | Step 8 | `final-alignment-review.md` | Hybrid: MANDATORY DUAL (Claude + Codex always both run) |
 

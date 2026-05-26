@@ -116,9 +116,29 @@ Load `prompts/claude-worker.md`. For `N ≥ 2`, prepend
 `prompts/claude-worker-retry.md` (filled with the prior round's verifier JSON +
 prior changed_paths).
 
-**Prepend `known-traps-appendix.md` full text** at the top of every worker
-prompt, under the header `### Execution environment traps (read before starting)`.
-This is the worker's mandatory pre-task orientation — do not skip it, do not summarize it.
+**Externalized known-traps (REQ-001/REQ-002 — 2026-05-27 token-waste refactor)**
+
+Once per phase, BEFORE round 1 dispatch, assemble the active known-traps file:
+
+1. `Read` `prompts/known-traps-universal.md` and `prompts/known-traps-claude-only.md`
+   from this sub-agent's own prompts directory.
+2. Concatenate them — universal first, then claude-only.
+3. `Write` the result to `.longtask/known-traps-active-{spec_basename}.md`
+   (creating `.longtask/` if needed). Exactly one write per phase, NOT one per
+   round; subsequent rounds reuse the same file.
+
+In the assembled worker prompt, replace the prior verbatim-prepend with a
+one-line directive under `### Execution environment traps (read before starting)`:
+
+> Read `.longtask/known-traps-active-{spec_basename}.md` in full as your
+> first action. It contains universal traps (codex CLI quirks, reward
+> hacking, scope drift, verifier integrity) plus Claude harness specifics
+> (Agent tool, 1M context budget, `/ship` Skill). Do not skip, do not summarize.
+
+The worker MUST issue a `Read` call against that path before any code change.
+This replaces the prior ~215-line prepend (which previously inflated every
+worker dispatch by the full appendix; multiplied across phases × retries that
+was the single largest per-run token sink).
 
 ### 2b. Auto-inject project context docs
 
@@ -177,9 +197,12 @@ Call the `Agent` tool with:
 - `model:` resolved from `model_tier` per the Step 1 table (`claude-haiku-4-5`
   / `claude-sonnet-4-6` / `claude-opus-4-7`)
 - `description:` short label, e.g. `"longtask {Pn} round {N} worker"`
-- `prompt:` the full assembled prompt (known-traps appendix + project context
-  + `claude-worker.md` / `claude-worker-retry.md`, with all `{...}`
-  substitutions applied including `{worker_output_path}`)
+- `prompt:` the assembled prompt (one-line Read-traps directive + project
+  context + `claude-worker.md` / `claude-worker-retry.md`, with all `{...}`
+  substitutions applied including `{worker_output_path}`). The known-traps
+  text itself lives in `.longtask/known-traps-active-{spec_basename}.md`
+  (written once per phase in Step 2a) — the worker `Read`s it on entry; we
+  no longer prepend the ~215 lines into the dispatch prompt.
 - `run_in_background: false` (you need the result before scope-gating)
 
 Heartbeat `round-N-worker-done` immediately on return.
@@ -237,9 +260,11 @@ The verifier reads `changed_paths` from the worker's `worker-output.json`
 `{changed_paths}` substitution — one path per line.
 
 **Verifier gets a restricted known-traps reference** — prepend only the checklist
-reference, not the full text:
+reference, not the full text. The verifier is a codex dispatch, so it
+references the universal file only (Category 5 / Claude-harness specifics do
+not apply):
 ```
-See known-traps-appendix.md categories 2 (reward hacking) and 4 (verifier integrity).
+See known-traps-universal.md categories 2 (reward hacking) and 4 (verifier integrity).
 ```
 
 Print "🔍 {Pn} round {N}/{max} · Codex B verifying" and heartbeat
@@ -254,7 +279,7 @@ B_PROMPT_FILE=/tmp/codex-prompt-{Pn}-r{N}-b.txt
 B_LOG_FILE=/tmp/codex-log-{Pn}-r{N}-b.txt
 VERDICT_JSON=/tmp/verifier-{Pn}-r{N}.json
 cat > "$B_PROMPT_FILE" <<'PROMPTEOF'
-<verifier prompt — known-traps checklist ref + codex-verifier.md with substitutions>
+<verifier prompt — known-traps-universal.md checklist ref (cats 2 + 4) + codex-verifier.md with substitutions>
 PROMPTEOF
 bash ~/.claude/skills/longtask/lib/codex-wrapper.sh \
   "$B_PROMPT_FILE" "{Pn}-r{N}-b" \

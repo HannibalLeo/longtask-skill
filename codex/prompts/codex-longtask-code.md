@@ -303,7 +303,7 @@ B_PROMPT=$(mktemp /tmp/longtask-verifier-{Pn}-r{N}.XXXX.txt)
 VERDICT=.longtask/reports/{spec_basename}/{Pn}-r{N}-verdict.json
 mkdir -p "$(dirname "$VERDICT")"
 cat > "$B_PROMPT" <<'PROMPTEOF'
-<assembled verifier prompt — known-traps reference + codex/prompts/verifier.md with substitutions>
+<assembled verifier prompt — known-traps-universal.md checklist reference (cats 2 + 4) + codex/prompts/verifier.md with substitutions>
 PROMPTEOF
 
 CODEX_LONGTASK_REASONING="$resolved_effort" \

@@ -1,215 +1,26 @@
-# Known Traps Appendix (longtask v2 — Claude hybrid)
+# Known Traps Appendix — DEPRECATED POINTER (2026-05-27 token-waste refactor)
 
-> This file is prepended in full to every Codex **worker** prompt as mandatory
-> pre-task orientation (`### Execution environment traps (read before starting)`).
+> This single-file appendix was split into two files to stop prepending Claude
+> harness specifics (Category 5) to codex worker / verifier dispatches that
+> have no Agent tool, no 1M context budget, and no `/ship` Skill. See REQ-001
+> and REQ-002 in `docs/specs/2026-05-27-token-waste-refactor-spec.md`.
 >
-> Verifiers and decision-gate reviewers receive only the checklist reference:
-> `See known-traps-appendix.md categories 2 (reward hacking) and 4 (verifier integrity).`
+> The split:
 >
-> Per-repo project details (CODEX_PROTOCOL.md, migration quirks, etc.) are loaded
-> separately via `spec.inject_context.always` — they are NOT in this file. This
-> file contains only execution-environment facts that are universal across projects.
-
----
-
-## Category 1 — Codex CLI Quirks
-
-**Trap 1.1 — No-TTY + large prompt: silent exit (issue #19945)**
-Feeding a large prompt string inline via stdin in no-TTY environments (e.g. a CI pipe
-or a background shell) causes codex to exit 0 silently without producing any output or
-diff. The `codex-wrapper.sh` works around this with a `script -q /dev/null` PTY
-attachment and writes the prompt to a temp file rather than piping it inline. Never
-pass the prompt as a heredoc directly to codex stdin; always use a file path.
-
-**Trap 1.2 — `codex_core::session` rollout error is noise**
-The stderr line `codex_core::session: failed to record rollout items: thread not found`
-appears under the `script` PTY wrapper in some codex versions. It is not a failure
-signal — codex still ran and produced output. Ignore it when parsing exit codes and
-output. Do not treat it as `BLOCKED_CODEX_WRAPPER_FAILURE`.
-
-**Trap 1.3 — Prompt must be a file path**
-The codex wrapper requires a **file path** as its first argument. Inline prompts,
-here-string injection, or shell substitution of large strings all trigger the stdin
-pipe hang from issue #19945. Write the prompt to `/tmp/codex-prompt-{Pn}-r{N}.txt`
-first, then pass that path to the wrapper.
-
-**Trap 1.4 — `exit 142` = STALL, not permanent FAIL**
-The wrapper kills codex after 10 minutes of no new stdout line and returns exit 142.
-This is a stall signal (stdin pipe hang, auth hang, networking deadlock, or reasoning
-budget exhausted mid-generation). First occurrence → retry. Two consecutive 142 exits
-for the same phase round → return `BLOCKED_CODEX_WRAPPER_FAILURE`. Do not treat 142
-as evidence that the implementation is wrong; the worker may not have had the chance
-to start writing.
-
-**Trap 1.5 — `--output-schema` enforces structure on last message only**
-When using `codex exec --output-schema <file> -o <last_message.json>`, the schema is
-applied to the final assistant message. If the codex session produces multiple assistant
-turns, only the last one is captured in `-o`. Ensure verifier and decision-review prompts
-explicitly instruct the model to emit the JSON object as its final and only output.
-
----
-
-## Category 2 — Reward Hacking Patterns
-
-These patterns cause tests to appear to pass without actually verifying the requirement.
-The verifier must scan the diff for all of them. Any match forces `verdict: FAIL`.
-
-**Trap 2.1 — Mock replacing real implementation**
-Worker returns a stub or mock that satisfies the test surface but does not implement
-the actual behavior. Signal: the implementation function body contains only `return
-mock_value` or `pass`, or the "implementation" file is a test fixture.
-
-**Trap 2.2 — Assertion weakening**
-- `assert True` / `assert 1 == 1` — trivially passing assertion
-- Removed `assert` statement replaced with `return` or a comment
-- `assertTrue(True)` / `assertIsNotNone(anything)` without semantic check
-- `try/except AssertionError: pass` — swallowing the failure
-
-**Trap 2.3 — Test skipping without justification**
-- `@pytest.mark.skip` without a `reason` keyword argument
-- `pytest.skip()` outside a conditional guard (e.g. version/platform check)
-- `@pytest.mark.xfail` added without a linked issue or `reason` explaining why the
-  failure is expected and acceptable
-
-**Trap 2.4 — Hardcoded fixtures / return values**
-- Function returns a literal value specifically crafted to pass the one assertion
-  being checked (detectable when the literal matches the test's expected value verbatim)
-- Expected values copy-pasted from the new implementation's output rather than derived
-  from the spec requirement
-
-**Trap 2.5 — Test deletion or rename**
-- Test file deleted rather than fixed
-- Test function removed from a file that previously contained it
-- Test renamed to something not matching the discovery pattern (e.g. `_disabled_test_foo`)
-
-**Trap 2.6 — Test configuration loosening**
-- Changes to `conftest.py`, `pytest.ini`, `setup.cfg`, `pyproject.toml` test config,
-  or the `verify_cmd` itself that relax what counts as passing
-- New environment variable or flag that makes assertions never execute, where the same
-  flag is also set by the implementation
-
-**Trap 2.7 — Suppression without explanation**
-- `# noqa` added to suppress a linting or typing error introduced by the change
-  (pre-existing `# noqa` in unchanged lines is acceptable)
-- `# type: ignore` added on lines the worker modified
-
----
-
-## Category 3 — Scope Drift
-
-**Trap 3.1 — Writing outside `file_scope`**
-Worker modifies a file not covered by any glob in `file_scope`. The sub-agent must
-run `git diff --name-only HEAD` after each worker pass and compare every path against
-`file_scope`. Any match outside → `BLOCKED_SCOPE`. Reset worktree before retry.
-
-**Trap 3.2 — Unauthorized meta-file changes**
-Worker modifies `README.md`, `CHANGELOG.md`, migration files, or other meta-files
-that are not in `file_scope` and not listed in `do_not_touch` (but still outside scope).
-These changes are often well-intentioned but violate the phase contract and pollute
-the commit.
-
-**Trap 3.3 — Touching `do_not_touch` paths**
-Any file matching a `do_not_touch` glob must not appear in the diff, even if the
-change looks beneficial. The `do_not_touch` constraint is a hard gate, not a suggestion.
-
-**Trap 3.4 — Incremental scope creep across retries**
-On retry rounds, the worker may expand the diff slightly each time ("just fixing one
-more thing"), eventually drifting far outside the original scope. Compare each retry
-diff against the Phase 1 scope gate result; reject any new paths that were not present
-in the first successful scope check.
-
----
-
-## Category 4 — Verifier Integrity
-
-**Trap 4.1 — Verifier modifying source files**
-The verifier must be strictly read-only. If `git status --porcelain` shows any new
-or modified files after the verifier runs, the sub-agent must reject the verdict as
-`VERIFIER_SCHEMA_INVALID` and report verifier mutation. The orchestrator must be
-informed; do not commit.
-
-**Trap 4.2 — Verifier fabricating `verify_cmd` results**
-The verifier must run the literal `verify_cmd` from the spec and capture its actual
-exit code. A verifier that infers "the tests probably pass" or "the diff looks correct"
-without running the command is fabricating the verdict. Signal: `verify_cmd_exit: 0`
-in the JSON but no corresponding `verify_cmd_excerpt` that shows actual test output.
-
-**Trap 4.3 — Verifier skipping DoD evaluation**
-Every `dod[]` bullet from the phase block must appear as a distinct entry in
-`dod_results[]`. A verifier that groups multiple bullets into one entry, marks all
-bullets as passed without citing evidence, or omits bullets entirely is not
-performing genuine evaluation. `dod_results` must have at least as many entries as
-there are bullets in `dod[]`.
-
-**Trap 4.4 — Verifier rewarding "looks complete"**
-The verifier may have alignment pressure toward marking work as PASS when the diff
-looks substantive. Require the verifier to cite concrete `file:line` or command output
-excerpts for every `dod_results[].passed == true` entry. "Implementation matches
-spec intent" with no citation is not evidence.
-
-**Trap 4.5 — Schema conformance but semantic inconsistency**
-A JSON output that passes schema validation can still be semantically wrong:
-`verdict: "PASS"` with any `dod_results[].passed == false` is a contradiction.
-`verdict: "FAIL"` with all `dod_results[].passed == true` and
-`reward_hacking_signals == []` is also a contradiction. The sub-agent's Step 5.5
-checks handle these; verifiers should be aware they will be caught.
-
----
-
-## Category 5 — Claude Harness Specifics
-
-These traps are specific to the Claude-side longtask implementation and do not apply
-when running the Codex-side pipeline.
-
-**Trap 5.1 — Agent tool background task timeout**
-Long-running Agent tool calls (sub-agents) can time out in the Claude harness if the
-background task takes too long without emitting output. The heartbeat mechanism in
-the sub-agent (writing `last_heartbeat` to state) is the watchdog — ensure every
-meaningful step emits a heartbeat. If the Agent tool itself errors (not the sub-agent
-logic, but the harness-level dispatch), the orchestrator returns
-`BLOCKED_AGENT_TOOL_FAILURE`. This is not the same as a sub-agent returning FAIL.
-
-**Trap 5.2 — Main-session context approaching 1M**
-The orchestrator Claude session accumulates context across all steps. At ~80% of 1M
-tokens (roughly 800K tokens), the orchestrator should proactively emit
-`BLOCKED_CONTEXT_BUDGET` and write a resume checkpoint to the state file. Do not
-continue dispatching sub-agents from a degraded context — decision quality degrades
-before the hard limit is hit. Resume in a fresh session using the state file.
-
-**Trap 5.3 — codex-wrapper exit 142 = STALL, not implementation failure**
-Exit 142 from `codex-wrapper.sh` means no new stdout line for 10 minutes. This is
-not evidence that the implementation is wrong or that the worker encountered a test
-failure. It means the process stalled (stdin hang, networking, reasoning budget).
-Retry once before escalating. Two consecutive 142 exits for the same round →
-`BLOCKED_CODEX_WRAPPER_FAILURE`. Never interpret 142 as a code-level FAIL.
-
-**Trap 5.4 — Skill tool (`/ship`) failure requires human review**
-When `spec.ship == true`, the orchestrator invokes `gstack /ship` via the Skill tool
-at the end of the pipeline. If this call fails, the orchestrator must NOT retry
-automatically. The ship step is externally visible and potentially irreversible
-(deploys, releases, notifications). Stop, report the failure to the user, and wait
-for explicit instruction before retrying.
-
-**Trap 5.5 — `codex exec` wrapper non-zero non-142 exits**
-Any non-zero exit from `codex-wrapper.sh` that is NOT 142 (e.g., 1, 2, 127, 130)
-indicates a hard wrapper error: missing `codex` binary, invalid flag combination,
-permission error, or wrapper script bug. This is `BLOCKED_CODEX_WRAPPER_FAILURE` —
-do not retry with the same command. Inspect the wrapper invocation, verify `codex`
-is on PATH, and check the wrapper's own stderr before retrying.
-
----
-
-## Usage Summary
-
-```
-Worker prompt:       prepend this file in full
-Verifier prompt:     prepend checklist reference only:
-                     "See known-traps-appendix.md categories 2 (reward hacking)
-                      and 4 (verifier integrity)."
-Decision-gate:       same checklist reference as verifier
-Final-alignment:     same checklist reference as verifier
-```
-
-Per-repo execution-environment details (project conventions, migration rules,
-known library quirks for this specific codebase) belong in `CODEX_PROTOCOL.md`
-or the paths listed in `spec.inject_context.always`, not in this file.
+> - **`known-traps-universal.md`** — Categories 1–4 (codex CLI quirks, reward
+>   hacking, scope drift, verifier integrity). Referenced by ALL workers and
+>   verifiers (both Claude and codex pipelines).
+> - **`known-traps-claude-only.md`** — Category 5 (Claude harness specifics:
+>   Agent tool, 1M context budget, `/ship` Skill). Concatenated with the
+>   universal file by `claude-sub-agent.md` into the per-phase runtime file
+>   `.longtask/known-traps-active-{spec_basename}.md`. Claude workers
+>   `Read` that combined file as their first action; codex workers and
+>   verifiers never see it.
+>
+> Any dispatch prose still referring to `known-traps-appendix.md` should be
+> updated:
+>
+> - Worker / verifier checklist references → `known-traps-universal.md`.
+> - Claude worker prepended content → the runtime file
+>   `.longtask/known-traps-active-{spec_basename}.md`.
+> - Codex worker prepended content → `known-traps-universal.md` only.

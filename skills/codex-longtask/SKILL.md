@@ -6,16 +6,15 @@ description: Use when a user provides a written source spec or implementation pl
 
 # /longtask
 
-> **v0.4 divergence note (2026-05-26):** The codex-end of this plugin still
+> **Divergence note (2026-05-26):** The codex-end of this plugin still
 > uses the 0.3.x single-model roundtable shape. The claude-end (`claude-longtask`,
-> `claude-longtask-plan`) was restructured in 0.4.0 to a cross-pair design
-> (codex × all lenses → codex mid-summary → claude × all lenses → claude
-> end-summary, with a single `cross_rounds ∈ {1, 2, 3}` axis replacing the
-> previous 4-tier scheme and the `hybrid` / `dual` mode knob). The codex-end
-> cannot cross-dispatch into Claude Agent so it cannot implement the v0.4
-> design as-is. If you have both harnesses available and want the v0.4
-> cross-rounds behavior, prefer `claude-longtask` / `claude-longtask-plan`.
-> See plugin root `CHANGELOG.md` v0.4.0 for details.
+> `claude-longtask-plan`) was restructured to a Claude-authored design with a
+> single automated Codex spec-sanity pass plus a gstack `autoplan` plan review,
+> dispatched through fresh Claude Agents. The codex-end cannot cross-dispatch
+> into Claude Agent so it cannot implement that design as-is. If you have both
+> harnesses available and want the current claude-end behavior, prefer
+> `claude-longtask` / `claude-longtask-plan`.
+> See plugin root `CHANGELOG.md` for details.
 
 Run a written source spec or already-written implementation plan through Codex
 **native subagents** without letting the parent chat become the place where

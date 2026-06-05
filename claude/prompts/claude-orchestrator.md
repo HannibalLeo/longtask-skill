@@ -16,33 +16,39 @@
 
 Codex sub-agents are limited to **two role categories** in claude-flow:
 
-- **Discussion**: spec-roundtable codex-phase lens (Step 2 P1), plan-roundtable
-  codex-phase lens (Step 4b P1), codex mid-round summary (Step 2 P2 / Step 4b
-  P2), codex spec sanity (Step 3).
+- **Discussion**: codex spec sanity (Step 2). Plan-stage Codex cross-voice is
+  no longer dispatched by the orchestrator directly — it is handled internally
+  by the gstack `autoplan` skill at Step 4 (autoplan runs each role as both a
+  Claude subagent and a Codex voice, and degrades gracefully to Claude-only
+  when Codex is unavailable).
 - **Verification**: phase verifier (Step 6), plan-integrity secondary
   (Step 5), decision-review secondary (Step 6 gate), final-alignment
   secondary (Step 8).
 
 **All authoring, editing, and worker roles stay on Claude:** spec classifier,
-spec / plan consensus editors, plan writer, spec / plan round-state editors,
-spec / plan cross-rounds final review, final E2E2 report, decision-review
-primary, plan-integrity primary, final-alignment primary, docs-sync, ship,
-and the Step 6 phase worker. Any new role that lands here MUST classify into
-one of those two codex categories above; otherwise it stays on Claude.
+plan writer, final E2E2 report, decision-review primary, plan-integrity
+primary, final-alignment primary, docs-sync, ship, and the Step 6 phase
+worker. Any new role that lands here MUST classify into one of those two codex
+categories above; otherwise it stays on Claude.
 
 ## Owner 四步分工（必读不可改）
 
 **(a) Claude 做架构** — input classification, plan writing, plan-integrity review,
 orchestrator dispatch logic, scope gate adjudication.
 
-**(b) Claude + Codex 讨论** — cross-rounds roundtable (v0.4): every round is a
-cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses
-→ claude opus end-summary). Lenses are NOT model-bound — every lens runs both
-codex and claude per round. Consensus editor (single Claude opus) writes the
-artifact once; cross-rounds-final-review (opus 4.7 xhigh) is the terminal gate.
-Then **codex spec sanity** (Step 3) — single Codex pass over the (possibly
-enhanced) spec, unconditional, anti-blindspot audit for omissions /
-hallucinations / contradictions before plan-writer.
+**(b) Claude + Codex 讨论** — two checkpoints, both lightweight:
+1. **Codex spec sanity** (Step 2) — single Codex pass over the spec,
+   automated, anti-blindspot audit for omissions / hallucinations /
+   contradictions / source-spec consistency before plan-writer. Returns
+   `CLEAN` | `NEEDS_REVISION`. `CLEAN` → straight to plan-writer;
+   `NEEDS_REVISION` → exactly one spec-revision pass, then continue.
+2. **Plan review via `autoplan`** (Step 4) — the gstack `autoplan` skill,
+   invoked from the main session. It runs the CEO / design / eng / DevEx
+   roles (each as both a Claude subagent and a Codex cross-voice), auto-decides
+   most points via its 6 principles, surfaces taste decisions / codex
+   disagreements at a user approval gate, and writes a `## GSTACK REVIEW
+   REPORT` into the plan file. The orchestrator does NOT maintain its own
+   plan-stage lens prompts or codex mid-summaries — autoplan owns that.
 
 **(c) Codex 干活** — phase worker writes code via `codex exec --json --output-schema`.
 Worker does not produce final verdicts; it produces diffs and optionally `decision_options[]`.
@@ -61,10 +67,9 @@ every PASS/FAIL and every BLOCKED_* escalation.
 
 **Read during normal orchestration:**
 - Source/input spec
-- Enhanced spec + spec-update document (when spec enhancement runs)
-- Round-state artifacts (one per round)
-- Round-1 sanity-pass artifact (for plan-shape inputs, in lieu of plan-writer)
+- Codex spec sanity JSON (Step 2)
 - Implementation plan / execution spec
+- Plan file's `## GSTACK REVIEW REPORT` section (written by autoplan at Step 4)
 - Plan-integrity review JSON
 - `.longtask/state/<spec>.json`
 - Changed path list + diff stat (not full diff)
@@ -123,37 +128,18 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
    ```json
    {
      "input_shape": "source_spec | hybrid | self_contained_plan | plan_with_source",
-     "cross_rounds": 1,
      "required_lenses": [],
      "risk_reasons": [],
      "pre_vetted": {"is_pre_vetted": true, "reason": "..."}
    }
    ```
-   `cross_rounds ∈ {1, 2, 3}` is the single round-count axis used by BOTH
-   spec-roundtable (Step 2) and plan-roundtable (Step 4b). `0` is illegal —
-   Step 4b is non-skippable. Missing or illegal value → re-dispatch classifier
-   once with a reminder, then `BLOCKED_AGENT_TOOL_FAILURE` if still missing.
-   Legacy fields (`tier_label`, `spec_rounds`, `plan_rounds`,
+   The classifier no longer emits a round-count axis — the spec/plan roundtable
+   and its round-count knob were removed. `required_lenses` is now advisory
+   context only (autoplan owns its own role set at Step 4). Legacy round-count
+   and roundtable-mode fields (any `*_rounds` count, `tier_label`,
    `suggested_roundtable_mode`, `discussion_rounds`, `discussion_required`)
-   are REJECTED — re-dispatch with explicit "remove these fields" instruction
-   before BLOCKED.
-
-   **REQ-007 defensive check (2026-05-27 token-waste refactor): classifier
-   may not emit `cross_rounds == 3`.** The classifier's default is 1, its
-   auto-cap is 2. `cross_rounds: 3` is only legal when the user set
-   `spec.cross_rounds: 3` in spec frontmatter (the frontmatter override
-   below overrides the classifier value). If the classifier JSON contains
-   `"cross_rounds": 3` and the user did NOT set `spec.cross_rounds: 3` in
-   frontmatter, **that is a classifier bug**: re-dispatch the classifier
-   once with the explicit reminder "auto-cap is 2; emit 2 with the
-   high-risk trigger cited in risk_reasons", and on a second occurrence
-   downgrade the value to 2 in state (preserving the classifier's
-   `risk_reasons[]` for audit). Only `spec.cross_rounds: 3` from
-   frontmatter is allowed to produce the final `cross_rounds == 3`.
-6. **Apply `spec.cross_rounds` frontmatter override.** If the input spec
-   has `spec.cross_rounds` in its frontmatter, it takes precedence over
-   the classifier value (precedence: frontmatter > classifier > default).
-   This is the only legal path to `cross_rounds: 3`.
+   are REJECTED — re-dispatch with an explicit "remove these fields"
+   instruction once, then `BLOCKED_AGENT_TOOL_FAILURE` if still malformed.
 3. Persist to `state.classification_path`.
 4. `input_shape` ∈ {`self_contained_plan`, `plan_with_source`} →
    - **Plan-shape strict frontmatter check (moved from Step 0):** the input is
@@ -164,158 +150,35 @@ instruct the user to open a fresh session and invoke `/longtask resume {state_pa
      showing the missing fields. Honor `final_smoke` as a deprecated alias of
      `final_e2e2_cmd` (emit deprecation notice).
    - Plan-shape inputs are auto-`pre_vetted` (classifier MUST mark
-     `pre_vetted.is_pre_vetted: true`). Spec-roundtable (Step 2) is skipped
-     entirely; plan-writer (Step 4) is also skipped (the plan is the input);
-     plan-roundtable (Step 4b) **still runs** at `cross_rounds` (default 1
-     for plan-shape inputs) as the safety-net pass before plan-integrity.
+     `pre_vetted.is_pre_vetted: true`). Codex spec sanity (Step 2) MAY be
+     skipped for pre_vetted inputs; plan-writer (Step 3) is also skipped (the
+     plan is the input); plan review via autoplan (Step 4) **still runs** as the
+     safety-net pass before plan-integrity.
 5. `input_shape` ∈ {`source_spec`, `hybrid`} → continue to Step 2. v2 frontmatter
-   on the input is NOT required at this stage; plan-writer (Step 4) will
-   generate a v2-formatted execution plan, and Step 4's validation will enforce
+   on the input is NOT required at this stage; plan-writer (Step 3) will
+   generate a v2-formatted execution plan, and Step 3's validation will enforce
    the v2 schema on plan-writer's output.
 
 ---
 
-## Step 2 — Spec Roundtable (cross-rounds, skippable only when `pre_vetted`)
+## Step 2 — Codex Spec Sanity Audit (merged)
 
-Step 2 runs `cross_rounds` rounds on the SOURCE SPEC, before plan-writer.
-Round count is set by classifier's `cross_rounds` ∈ `{1, 2, 3}`. Step 2 is
-**skipped entirely** when `classification.pre_vetted.is_pre_vetted == true`.
+A single automated `codex exec` audit of the spec artifact, before plan-writer.
+This is the merged successor of the old Step 2 (spec roundtable) + Step 3 (codex
+spec sanity): there is **no multi-role roundtable at the spec stage** anymore —
+one Codex pass is the spec-stage cross-model check.
 
-If skipped:
-1. Persist `state.spec_roundtable_skipped_reason = classification.pre_vetted.reason`.
-2. Skip directly to Step 3 (codex spec sanity).
-3. **Do NOT skip Step 4b** — plan-roundtable always runs at the same
-   `cross_rounds` count.
-
-If `pre_vetted.is_pre_vetted == false`, run the rounds as described below.
-
-**Roundtable shape — fixed in v0.4 (no `hybrid` / `dual` knob).** Every round
-is a cross-pair:
-
-```
-Round R (1..cross_rounds):
-  Phase 1: parallel codex exec × |required_lenses| lens prompts
-           (spec-roundtable.md with phase=codex)
-  Phase 2: 1× codex exec — spec-codex-mid-summary.md (xhigh)
-  Phase 3: parallel Claude Agent × |required_lenses| lens prompts
-           (spec-roundtable.md with phase=claude)
-           Input includes Phase 1 outputs + Phase 2 mid-summary.
-  Phase 4: 1× Claude Agent — spec-round-state.md (opus)
-           Input includes Phase 1 + Phase 2 + Phase 3 outputs.
-           Writes .longtask/reports/{spec}/rounds/spec-round-{R}-state.md
-```
-
-Per-round subagent count = `2×|required_lenses| + 2`. For the default 5-lens
-set this is 12 subagent dispatches per round. Cross_rounds=1/2/3 → 12/24/36
-plus the terminal Phase 5 and 6 below.
-
-**No lens-to-model routing.** Every selected lens runs once as codex (Phase 1)
-and once as Claude Agent (Phase 3). The claude-phase lens reads the codex-phase
-output for the same lens plus the mid-summary; this is where cross-model
-heterogeneity per round comes from. If either model dispatch fails on any lens
-→ `BLOCKED_CODEX_WRAPPER_FAILURE` / `BLOCKED_AGENT_TOOL_FAILURE`; do not
-silently degrade.
-
-**No `final-alignment-review` is exception.** Step 8 still runs as mandatory
-dual (independent of this section's design) — see Step 8.
-
-For each round R in 1..cross_rounds:
-
-1. **Phase 1 (codex lens output)** — for each lens in `required_lenses`:
-   ```bash
-   bash lib/codex-wrapper.sh \
-     <prompt-file-spec-roundtable-with-phase=codex-and-lens={lens}> \
-     spec-r{R}-codex-{lens} \
-     "" \
-     .longtask/reports/{spec}/rounds/spec-round-{R}/codex-lens-{lens}.json
-   ```
-   Dispatch all lenses concurrently. Collect outputs (markdown payload from
-   `last_message` JSON) into `Phase1_codex_lens_outputs`.
-
-2. **Phase 2 (codex mid-summary — digest output per REQ-005)** — single codex
-   exec with `prompts/spec-codex-mid-summary.md` substituted with
-   `{codex_phase_outputs} = Phase1_codex_lens_outputs` (read by codex to
-   produce the digest; not re-injected downstream),
-   `{round_number} = R`, prior round-state etc. The mid-summary writes a
-   **compressed digest** (per-lens bullets ≤25 words + one Codex-vs-Claude
-   disagreement table, ≤5 rows) to
-   `.longtask/reports/{spec}/rounds/spec-round-{R}-codex-mid-summary.md`.
-   Read the resulting file as `Phase2_codex_mid_summary_digest`.
-
-3. **Phase 3 (claude lens output)** — for each lens in `required_lenses`:
-   - Dispatch Claude Agent with `prompts/spec-roundtable.md` substituted with
-     `{phase} = claude`, `{specialist_role} = {lens}`,
-     `{codex_mid_summary_digest} = Phase2_codex_mid_summary_digest`,
-     prior round-state etc. The raw `Phase1_codex_lens_outputs` are **NOT**
-     injected (digest output contract per REQ-005) — they stay on disk for
-     audit at the per-lens JSON paths above.
-   Dispatch all lenses concurrently. Collect outputs into
-   `Phase3_claude_lens_outputs`.
-
-4. **Phase 4 (claude end-summary, writes round-state)** — single Claude Agent
-   with `prompts/spec-round-state.md` substituted with
-   `{codex_phase_outputs} = Phase1_codex_lens_outputs` (round-state editor
-   still receives raw lens outputs — it adjudicates per-lens positions, so
-   it gets the unfiltered material; the digest is the Phase 3 lens channel
-   only), `{codex_mid_summary} = Phase2_codex_mid_summary_digest` (the
-   digest functions as the mid-summary input for round-state too),
-   `{claude_phase_outputs} = Phase3_claude_lens_outputs`, etc.
-   Writes round-state to
-   `.longtask/reports/{spec}/rounds/spec-round-{R}-state.md` and returns
-   JSON with `status ∈ {READY_FOR_NEXT_ROUND, READY_FOR_SPEC_CONSENSUS,
-   BLOCKED_SPEC_REWRITE}`.
-
-5. Persist `state.spec_cross_round_state_paths[]` += round-state path; append
-   `state.spec_cross_round_codex_mid_summary_paths[]` += codex mid-summary path.
-   `BLOCKED_SPEC_REWRITE` from Phase 4 stops the pipeline immediately.
-
-After the final spec-stage round (Phase 4 returns `READY_FOR_SPEC_CONSENSUS`):
-
-**Phase 5 — Spec consensus editor (single Claude opus, v0.4 single-author).**
-
-1. Dispatch Claude Agent with `prompts/spec-consensus-editor.md` substituted with
-   `{round_state_outputs}` = concatenation of all round-state markdowns,
-   `{classification_json}`, `{source_spec_text}`, etc. Writes:
-   - `.longtask/specs/{spec_basename}-enhanced-spec.md`
-   - `.longtask/reports/{spec}/spec-update.md`
-   - `.longtask/state/{spec_basename}/spec-alignment-matrix.json`
-2. Persist `state.enhanced_spec_path` / `state.enhanced_spec_sha256` /
-   `state.spec_update_path` / `state.alignment_matrix_path` /
-   `state.spec_consensus_editor_path` (the JSON return).
-3. `status == BLOCKED_SPEC_REWRITE` → emit BLOCKED, stop.
-
-**Phase 6 — Cross-rounds final review (opus 4.7 xhigh, v0.4 new terminal gate).**
-
-1. Dispatch Claude Agent with `prompts/cross-rounds-final-review.md` substituted
-   with `stage=spec`, the consensus artifact, the consensus-editor JSON return,
-   ALL round-state outputs, the spec-update document, etc. Writes
-   `.longtask/state/{spec_basename}/spec-cross-rounds-final-review.json`.
-2. Read the JSON. `verdict ∈ {PASS_CLEAN, PASS_WITH_RESIDUAL_RISKS, NEEDS_REVISION}`.
-3. Reconcile:
-   - `PASS_CLEAN` or `PASS_WITH_RESIDUAL_RISKS` → persist `residual_risks[]`
-     to `state.spec_cross_rounds_residual_risks` (carry forward to Step 3
-     codex spec sanity as additional signal), proceed to Step 3.
-   - `NEEDS_REVISION` + `recommended_action == LOOP_TO_CONSENSUS_EDITOR` →
-     re-dispatch Phase 5 once with `needs_revision_reasons[]` embedded in the
-     prompt as required inputs; then re-run Phase 6. Cap at one retry.
-   - `NEEDS_REVISION` after one retry, OR `recommended_action == ESCALATE_TO_USER`
-     → `BLOCKED_SPEC_REWRITE` (or `ASK_HUMAN` if classification has
-     human-decision risk_reasons attached); stop.
-4. Persist `state.spec_cross_rounds_final_review_path`,
-   `state.spec_cross_rounds_final_review_verdict`.
-
----
-
-## Step 3 — Codex Spec Sanity Audit (UNCONDITIONAL)
-
-Single-pass `codex exec` audit of the current spec artifact (enhanced-spec from Step 2 if
-it ran, otherwise the raw input). Always runs — Step 2's optionality does NOT cascade.
+**Skip rule.** `pre_vetted` inputs (classifier marked
+`pre_vetted.is_pre_vetted == true`) MAY skip Step 2. When skipped, persist
+`state.spec_sanity_skipped_reason = classification.pre_vetted.reason` and go
+straight to Step 3 (or Step 4 for plan-shape inputs that also skip Step 3).
+All other inputs run Step 2.
 
 1. Build a prompt file embedding `prompts/spec-codex-sanity.md` + the current spec text
-   + source-spec text + classification JSON.
+   (the raw input) + source-spec text (if any) + classification JSON.
 2. Dispatch via wrapper:
    ```bash
-   bash lib/codex-wrapper.sh <prompt-file> sanity-r1 \
+   bash lib/codex-wrapper.sh <prompt-file> spec-sanity \
      "" \
      .longtask/state/{spec_basename}/spec-codex-sanity.json
    ```
@@ -325,46 +188,47 @@ it ran, otherwise the raw input). Always runs — Step 2's optionality does NOT 
    finding arrays (omissions / hallucinations / internal_contradictions /
    reward_hacking_bait), `confidence`, `recommended_action`.
 4. Reconcile (prefer auto-loop over ASK_HUMAN; ASK_HUMAN is the last resort):
-   - `verdict == CLEAN` → proceed to Step 4 with sanity report attached.
-   - `verdict == NEEDS_REVISION` + `recommended_action == loop_to_consensus_editor`
-     + Step 2 ran → re-dispatch consensus-editor with codex findings; cap at 1 loop;
-     then re-run Step 3.
-   - `verdict == NEEDS_REVISION` + plan-shape input (Step 4 plan-writer skipped) →
-     **default: inject codex findings as `known_concerns[]` directly onto the
-     submitted plan**; the consensus-editor re-runs over the plan and must address
-     each finding via a repair phase, an added DoD bullet on an existing phase, or
-     an explicit out-of-scope row with rationale (Step 5 plan-integrity-review
-     enforces this — `BLOCKED_SPEC_REWRITE` if missing). When codex flags
-     `hallucinations[]` non-empty AND any hallucination touches a categorical
-     high-risk category (security boundary / data-loss / irreversible migration /
-     external API contract / regulatory / production credentials), DO NOT silently
-     inject — instead **run the Uncertainty Clarification Round** (see section
-     below). PROCEED → inject `known_concerns[]` plus the clarification's
-     `residual_concerns[]`. ESCALATE → `ASK_HUMAN` with both perspectives attached.
-   - `verdict == NEEDS_REVISION` + `recommended_action == ask_human` →
-     **run the Uncertainty Clarification Round** before escalating. PROCEED → apply
-     the chosen action and persist clarification JSON. ESCALATE → `ASK_HUMAN`.
-5. Persist final `spec_codex_sanity_path` + `spec_codex_sanity_verdict` to state.
+   - `verdict == CLEAN` → proceed straight to plan-writer (Step 3) with the
+     sanity report attached.
+   - `verdict == NEEDS_REVISION` → run **exactly one spec-revision pass**: the
+     orchestrator applies Codex's findings as `known_concerns[]` that plan-writer
+     (Step 3) MUST address via a repair phase, an added DoD bullet on an existing
+     phase, or an explicit out-of-scope row with rationale (Step 5
+     plan-integrity-review enforces this — `BLOCKED_SPEC_REWRITE` if missing).
+     For plan-shape inputs that skip plan-writer, inject `known_concerns[]`
+     directly onto the submitted plan; autoplan (Step 4) then reviews the
+     concern-annotated plan. After this single revision pass, continue — do NOT
+     loop Step 2.
+   - **High-risk exception.** When `verdict == NEEDS_REVISION` AND
+     `recommended_action == ask_human`, OR `hallucinations[]` is non-empty and
+     any hallucination touches a categorical high-risk category (security
+     boundary / data-loss / irreversible migration / external API contract /
+     regulatory / production credentials), **run the Uncertainty Clarification
+     Round** (see section below) before escalating. PROCEED → inject
+     `known_concerns[]` plus the clarification's `residual_concerns[]`.
+     ESCALATE → `ASK_HUMAN` with both perspectives attached.
+5. Persist `spec_codex_sanity_path` + `spec_codex_sanity_verdict` to state.
 
-**Why unconditional:** Step 2 (roundtable) is a Claude-heavy multi-perspective brainstorm.
-Step 3 is a single Codex audit with a different training prior, designed to catch the
-omissions/hallucinations a same-distribution reviewer chain would miss. Even when the
-spec is already a self-contained plan, running Codex against it once is cheap insurance
-against blind-spot reward hacking that survives Claude-only review.
+**Why this is the only spec-stage check:** the old Claude-heavy multi-perspective
+roundtable was over-engineered for ordinary specs. A single Codex audit with a
+different training prior catches the omissions / hallucinations / contradictions
+a same-distribution reviewer chain would miss; the heavy multi-role scrutiny now
+lives at the plan stage (Step 4, autoplan), where the concrete execution contract
+makes the criticism cheaper and sharper.
 
 ---
 
-## Step 4 — Plan Writer
+## Step 3 — Plan Writer
 
 1. Dispatch Claude Agent (opus) with `prompts/plan-writer.md`.
    - Plan-writer invokes `superpowers:writing-plans` skill internally.
-   - **Multi-agent mode**: when the plan will have ≥3 phases (estimate from enhanced
-     spec's section count, or from sanity-audit-suggested phase count), plan-writer
-     dispatches one Claude Agent **per phase** in parallel, then merges. Single-phase or
-     2-phase plans stay single-agent. See `prompts/plan-writer.md` for the multi-agent
-     dispatch contract.
-   - If Step 3 produced `known_concerns[]`, pass them in the prompt as required
-     inputs (see Step 3 reconciliation rule).
+   - **Multi-agent mode**: when the plan will have ≥3 phases (estimate from the
+     source spec's section count, or from sanity-audit-suggested phase count),
+     plan-writer dispatches one Claude Agent **per phase** in parallel, then
+     merges. Single-phase or 2-phase plans stay single-agent. See
+     `prompts/plan-writer.md` for the multi-agent dispatch contract.
+   - If Step 2 produced `known_concerns[]`, pass them in the prompt as required
+     inputs (see Step 2 reconciliation rule).
 2. Require the plan writer to produce one artifact at:
    `.longtask/plans/{spec_basename}-implementation-plan.md`
 3. Persist `implementation_plan_path` + sha256 to state.
@@ -383,148 +247,66 @@ against blind-spot reward hacking that survives Claude-only review.
 5. Validate: all source/input requirements must appear in the plan's alignment matrix,
    phase `source_requirements`, DoD, or an explicit out-of-scope row. Missing →
    `BLOCKED_SPEC_REWRITE`.
-6. If Step 3 surfaced `known_concerns[]`, require those concerns to appear in
+6. If Step 2 surfaced `known_concerns[]`, require those concerns to appear in
    plan as either: (a) dedicated repair phase, (b) added dod bullets on
    relevant existing phases, or (c) explicit out-of-scope row with rationale.
    Missing → `BLOCKED_SPEC_REWRITE`.
 
 ---
 
-## Step 4b — Plan Roundtable (cross-rounds, ALWAYS RUN, cross_rounds ≥ 1)
+## Step 4 — Plan Review via `autoplan` (ALWAYS RUN)
 
-Step 4b runs `cross_rounds` rounds on the implementation plan produced by
-Step 4 (or, for plan-shape inputs, on the input plan itself). This is the
-cheapest defense against bad phase decomposition because the plan is concrete
-enough that lens scrutiny can spot real execution problems (unobservable
-verifiers, hidden cross-phase coupling, over-coarse phases, missing dod
-evidence).
+Step 4 hands the plan from Step 3 (or, for plan-shape inputs, the input plan
+itself) to the gstack `autoplan` skill for multi-role review. autoplan runs the
+CEO / design / eng / DevEx roles — **each as both a Claude subagent AND a Codex
+cross-voice** — auto-decides most points via its 6 principles, and surfaces only
+taste decisions / codex disagreements to the user at a final approval gate. It
+degrades gracefully to Claude-only when Codex is unavailable. The longtask
+orchestrator no longer maintains plan-stage lens prompts or codex mid-summaries
+— autoplan owns all of that.
 
-**Always run.** Even when `pre_vetted.is_pre_vetted == true` (Step 2 skipped),
-plan-roundtable runs at `cross_rounds` because the plan is the final
-execution contract. Skipping Step 4b is illegal regardless of input shape; the
-only knob is `cross_rounds ∈ {1, 2, 3}`.
+**Always run.** Plan review is non-skippable regardless of input shape (even
+`pre_vetted`), because the plan is the concrete execution contract and
+late-stage criticism is the cheapest defense against bad phase decomposition.
 
-**Plan-stage lens set is a pruned subset of the spec-stage set (REQ-004).**
-(Hereafter referred to as the **plan-stage lens set** — distinct from the
-classifier-emitted spec-stage `required_lenses`.)
-The plan-stage roundtable does NOT consume the classifier's full
-`required_lenses` verbatim — UI-design and domain-expert lenses contribute
-little to phase decomposition / `file_scope` / `verify_cmd` authoring, since
-their value has already landed in the enhanced spec at the end of Step 2.
-Derive `plan_required_lenses` from `required_lenses` using these rules:
+**Availability is hard-required.** Before invoking, confirm the gstack
+`autoplan` skill is installed (the user has gstack globally). If `autoplan` is
+not available, **FAIL with a clear message** — do NOT silently skip plan review:
 
-1. **Always include** `engineering` and `ceo-product` (when present in the
-   classifier set). These are the universal plan-stage lenses — engineering
-   judges phase decomposition / verifier observability / `file_scope`
-   correctness; ceo-product judges whether the phase order ships product
-   value incrementally.
-2. **Include `ui-design`** only when at least one phase in the plan has
-   `file_scope` matching a frontend / UI glob (`**/*.tsx`, `**/*.vue`,
-   `frontend/**`, `web/**`, `ui/**`, `components/**`, etc.).
-3. **Include `domain-expert`** only when at least one phase in the plan has
-   `file_scope` matching the spec's domain-specific paths (cite the domain
-   match in the orchestrator state).
-4. **Include `design`** only when at least one phase produces user-visible
-   surface area (UI mockups, layout, copy, brand) — same `file_scope` test
-   as `ui-design`, plus content/copy paths.
+```
+BLOCKED_AGENT_TOOL_FAILURE: gstack `autoplan` skill not found. Plan review at
+Step 4 requires gstack to be installed. Install gstack, then re-run /longtask.
+```
 
-Persist the resolved `plan_required_lenses` to
-`state.plan_required_lenses` with a one-line `plan_lens_pruning_reason`
-explaining which lenses were dropped and why (for audit). If the pruned
-set ends up identical to the spec-stage set (rare, e.g. an all-domain
-spec), that is fine — just record "no pruning applied; all spec lenses
-match plan phases".
+**Invoke from the MAIN session — not a subagent.** autoplan is interactive: it
+must reach the user for its final approval gate, so it cannot run inside an
+isolated Agent-tool subagent. Invoke it via the Skill tool from this
+orchestrator session, passing the plan file path from Step 3 as its input.
 
-The Step 4b dispatches below use `plan_required_lenses` (the pruned set),
-not `required_lenses` (the spec-stage set).
+1. Invoke the `autoplan` Skill with the plan file
+   `.longtask/plans/{spec_basename}-implementation-plan.md` as its target plan.
+   autoplan's preamble (gstack update check, session bookkeeping) runs on
+   invocation — this is expected, non-fatal noise.
+2. autoplan reviews the plan, auto-decides intermediate points, surfaces taste
+   decisions / User Challenges to the user at its approval gate, and **writes
+   its verdict into the plan file** as a `## GSTACK REVIEW REPORT` section per
+   its own contract (plus a Decision Audit Trail).
+3. After autoplan returns, **read the plan file back**. Recompute the plan
+   sha256 (autoplan edits the plan in place) and persist as
+   `state.implementation_plan_post_review_sha256`. The pre-review sha256 stays
+   in `state.implementation_plan_sha256` for diff audit.
+4. Record a pointer to the review report:
+   `state.autoplan_review_report_path = "<plan_path>#gstack-review-report"`
+   (the report lives inside the plan file as the `## GSTACK REVIEW REPORT`
+   section — store the plan path plus the section anchor). Also persist
+   `state.autoplan_review_status` from autoplan's completion status
+   (`DONE` | `DONE_WITH_CONCERNS` | `BLOCKED` | `NEEDS_CONTEXT`).
+5. If autoplan returns `BLOCKED` or `NEEDS_CONTEXT`, stop and surface its
+   reason to the user; do not proceed to Step 5 on an unreviewed plan.
 
-**Roundtable shape — identical to Step 2** (cross-pair, no `hybrid` / `dual`
-knob).
-
-For each round R in 1..cross_rounds:
-
-1. **Phase 1 (codex lens output)** — for each lens in `plan_required_lenses`
-   (the pruned subset; see § Plan-stage lens set above):
-   ```bash
-   bash lib/codex-wrapper.sh \
-     <prompt-file-plan-roundtable-with-phase=codex-and-lens={lens}> \
-     plan-r{R}-codex-{lens} \
-     "" \
-     .longtask/reports/{spec}/rounds/plan-round-{R}/codex-lens-{lens}.json
-   ```
-   Dispatch all lenses concurrently. Each prompt is `prompts/plan-roundtable.md`
-   substituted with `{phase} = codex`, `{specialist_role} = {lens}`, the current
-   plan text, enhanced spec, alignment matrix, and prior plan-round-state (if
-   any). Collect outputs into `Phase1_codex_plan_lens_outputs`.
-
-2. **Phase 2 (codex mid-summary — digest output per REQ-005)** — single codex
-   exec with `prompts/plan-codex-mid-summary.md` substituted with
-   `{codex_phase_outputs} = Phase1_codex_plan_lens_outputs` (codex-only input;
-   not propagated downstream), `{round_number} = R`, prior round-state etc.
-   Writes a **compressed digest** (per-lens bullets ≤25 words + one
-   Codex-vs-Claude disagreement table, ≤5 rows) to
-   `.longtask/reports/{spec}/rounds/plan-round-{R}-codex-mid-summary.md`.
-   Read the resulting file as `Phase2_plan_codex_mid_summary_digest`.
-
-3. **Phase 3 (claude lens output)** — for each lens in `plan_required_lenses`
-   (the pruned subset):
-   - Dispatch Claude Agent with `prompts/plan-roundtable.md` substituted with
-     `{phase} = claude`, `{specialist_role} = {lens}`,
-     `{codex_mid_summary_digest} = Phase2_plan_codex_mid_summary_digest`,
-     prior round-state. The raw `Phase1_codex_plan_lens_outputs` are NOT
-     injected (digest output contract per REQ-005) — they remain on disk
-     for audit only.
-   Dispatch all lenses concurrently. Collect outputs into
-   `Phase3_claude_plan_lens_outputs`.
-
-4. **Phase 4 (claude end-summary, writes plan-round-state)** — single Claude
-   Agent with `prompts/plan-round-state.md`. Writes plan-round-state to
-   `.longtask/reports/{spec}/rounds/plan-round-{R}-state.md` and returns JSON
-   with `status ∈ {READY_FOR_NEXT_ROUND, READY_FOR_PLAN_CONSENSUS,
-   BLOCKED_SPEC_REWRITE}`.
-
-5. Persist `state.plan_cross_round_state_paths[]` += round-state path;
-   `state.plan_cross_round_codex_mid_summary_paths[]` += codex mid-summary.
-   `BLOCKED_SPEC_REWRITE` from Phase 4 stops the pipeline.
-
-After the final plan-stage round (Phase 4 returns `READY_FOR_PLAN_CONSENSUS`):
-
-**Phase 5 — Plan consensus editor (single Claude opus, v0.4 single-author).**
-
-1. Dispatch Claude Agent with `prompts/plan-consensus-editor.md` substituted with
-   `{round_state_outputs}` = concatenation of all plan-round-state markdowns,
-   `{plan_sha256_pre} = state.implementation_plan_sha256`, etc.
-2. The consensus editor **rewrites `plan.md` in place** — frontmatter must be
-   preserved exactly (especially `source_spec_path` / `source_spec_sha256` /
-   `final_verify_cmd` / `final_e2e2_cmd` / `final_report_path`).
-3. Recompute the plan sha256 after the rewrite and persist as
-   `state.implementation_plan_post_cross_rounds_sha256`. The pre-cross-rounds
-   sha256 stays in `state.implementation_plan_sha256` for diff audit.
-4. Persist `state.plan_consensus_editor_path` (the JSON return).
-   `status == BLOCKED_SPEC_REWRITE` → stop.
-
-**Phase 6 — Cross-rounds final review (opus 4.7 xhigh, v0.4 new terminal gate).**
-
-1. Dispatch Claude Agent with `prompts/cross-rounds-final-review.md` substituted
-   with `stage=plan`, the rewritten plan body, the plan-consensus-editor JSON
-   return, ALL plan-round-state outputs, the plan-update document, the enhanced
-   spec path, etc. Writes
-   `.longtask/state/{spec_basename}/plan-cross-rounds-final-review.json`.
-2. Read the JSON. Reconcile:
-   - `PASS_CLEAN` or `PASS_WITH_RESIDUAL_RISKS` → persist `residual_risks[]`
-     to `state.plan_cross_rounds_residual_risks` (carry forward to Step 5
-     plan-integrity-review as additional signal), proceed to Step 5.
-   - `NEEDS_REVISION` + `recommended_action == LOOP_TO_CONSENSUS_EDITOR` →
-     re-dispatch Phase 5 once with `needs_revision_reasons[]` embedded; then
-     re-run Phase 6. Cap at one retry.
-   - `NEEDS_REVISION` after one retry, OR `ESCALATE_TO_USER` →
-     `BLOCKED_SPEC_REWRITE`; stop.
-3. Persist `state.plan_cross_rounds_final_review_path`,
-   `state.plan_cross_rounds_final_review_verdict`.
-
-Step 4b output gates Step 5: plan-integrity review reads
-`implementation_plan_post_cross_rounds_sha256` (or the same as
-`implementation_plan_sha256` if Step 4b was a no-op rewrite).
+Step 4 output gates Step 5: plan-integrity review reads
+`implementation_plan_post_review_sha256` (or the same as
+`implementation_plan_sha256` if autoplan made no edits).
 
 ---
 
@@ -616,8 +398,8 @@ on high-risk paths.
 
 ### When this round runs (orchestrator policy — auto, no user prompt)
 
-- **Step 3** — `verdict == NEEDS_REVISION` + `recommended_action == ask_human`
-- **Step 3** — `verdict == NEEDS_REVISION` + `hallucinations[]` non-empty + any
+- **Step 2** — `verdict == NEEDS_REVISION` + `recommended_action == ask_human`
+- **Step 2** — `verdict == NEEDS_REVISION` + `hallucinations[]` non-empty + any
   hallucination touches a categorical high-risk category
 - **Decision Gate** — primary and secondary disagree, no `vetoes[]`, confidence
   delta ≤ 0.15 (or any other path that would otherwise default to `ASK_HUMAN`)
@@ -647,8 +429,8 @@ bash lib/codex-wrapper.sh \
 Prompt file is `prompts/codex-clarification.md` with these substitutions:
 - `{trigger}` — short label of where the uncertainty arose
 - `{primary_verdict_json}` — Claude primary verdict (for Decision Gate / Step 5)
-  or the codex sanity verdict (for Step 3)
-- `{secondary_verdict_json}` — Codex secondary verdict, or `{}` for Step 3
+  or the codex sanity verdict (for Step 2)
+- `{secondary_verdict_json}` — Codex secondary verdict, or `{}` for Step 2
   single-pass triggers
 - `{evidence_block}` — spec excerpt, options table, relevant verifier JSONs
 - `{would_ask_human_because}` — the specific reason the orchestrator was about
@@ -702,7 +484,7 @@ problem to surface via `BLOCKED_SPEC_REWRITE`, not a runtime cap.
 {
   "uncertainty_clarifications": [
     {
-      "trigger": "step-3-codex-sanity-needs-revision-high-risk-hallucination",
+      "trigger": "step-2-codex-sanity-needs-revision-high-risk-hallucination",
       "verdict": "PROCEED",
       "effective_verdict": "PROCEED",
       "chosen_option": "inject-with-residual-concerns",
@@ -726,7 +508,7 @@ After all phases return PASS:
 2. Sub-agent runs `final_verify_cmd` and `final_e2e2_cmd`.
 3. Sub-agent saves screenshots under `.longtask/reports/{spec}/screenshots/`.
 4. Sub-agent writes `final_report_path` with:
-   - Source/input spec requirement → enhanced spec → plan phase/DoD/test alignment matrix
+   - Source/input spec requirement → plan phase/DoD/test alignment matrix
    - Plan → spec alignment and explicit out-of-scope items
    - Screenshot path → visible content → source requirement validated
    - Command names, exit codes, compact evidence excerpts
@@ -737,10 +519,10 @@ After all phases return PASS:
 ## Step 8 — Final Alignment Review (MANDATORY DUAL)
 
 This step is **always** dual (Claude opus primary + Codex GPT-5.5 xhigh
-secondary, independent dispatches) regardless of the cross-rounds chain
-outcome. v0.4 note: roundtable cross-rounds already digest codex+claude per
-round, but final-alignment-review is a separate last-line-of-defense gate that
-runs only once at end-of-pipeline. It is intentionally redundant with Step 5
+secondary, independent dispatches) regardless of the Step 4 autoplan outcome.
+Note: autoplan already runs a Claude+Codex review at the plan stage, but
+final-alignment-review is a separate last-line-of-defense gate that runs only
+once at end-of-pipeline. It is intentionally redundant with Step 5
 plan-integrity-review's hybrid gate.
 
 1. Dispatch primary: Claude Agent (opus) with `prompts/final-alignment-review.md`.
@@ -780,7 +562,7 @@ Execute only if spec opts in:
 |---|---|
 | `BLOCKED_SCOPE` | Worker modified paths outside `file_scope` or inside `do_not_touch` |
 | `BLOCKED_SPEC` | Spec frontmatter missing required field(s); spec cannot be parsed |
-| `BLOCKED_SPEC_REWRITE` | Plan integrity review FAIL; alignment matrix incomplete; consensus editor produced contradictory plan |
+| `BLOCKED_SPEC_REWRITE` | Plan integrity review FAIL; alignment matrix incomplete; plan-writer produced contradictory plan |
 | `BLOCKED_MODEL_UNAVAILABLE` | Preferred model (Claude opus / GPT-5.5) unavailable AND task is irreversible / security-sensitive / out-of-spec |
 | `BLOCKED_E2E2_SCREENSHOT` | Final E2E2 sub-agent did not produce required screenshot evidence |
 | `VERIFIER_SCHEMA_INVALID` | Codex verifier output does not conform to `schemas/verifier-result.schema.json` |
@@ -813,27 +595,16 @@ suggested next step (e.g., "extend file_scope to include X", "split phase Pn int
   "input_path": "...",
   "input_sha256": "...",
   "input_shape": "source_spec | hybrid | self_contained_plan | plan_with_source",
-  "enhanced_spec_path": null,
-  "enhanced_spec_sha256": null,
-  "spec_update_path": null,
   "preflight_skip_path": null,
   "classification_path": "...",
-  "spec_roundtable_skipped_reason": null,
-  "spec_cross_round_codex_mid_summary_paths": [],
-  "spec_cross_round_state_paths": [],
-  "spec_consensus_editor_path": null,
-  "spec_cross_rounds_final_review_path": null,
-  "spec_cross_rounds_final_review_verdict": null,
-  "spec_cross_rounds_residual_risks": [],
+  "spec_sanity_skipped_reason": null,
+  "spec_codex_sanity_path": null,
+  "spec_codex_sanity_verdict": null,
   "implementation_plan_path": "...",
   "implementation_plan_sha256": "...",
-  "plan_cross_round_codex_mid_summary_paths": [],
-  "plan_cross_round_state_paths": [],
-  "plan_consensus_editor_path": null,
-  "implementation_plan_post_cross_rounds_sha256": null,
-  "plan_cross_rounds_final_review_path": null,
-  "plan_cross_rounds_final_review_verdict": null,
-  "plan_cross_rounds_residual_risks": [],
+  "implementation_plan_post_review_sha256": null,
+  "autoplan_review_report_path": null,
+  "autoplan_review_status": null,
   "plan_integrity_review_path": "...",
   "model_degraded": false,
   "model_requests": [
@@ -895,16 +666,12 @@ suggested next step (e.g., "extend file_scope to include X", "split phase Pn int
 | Orchestrator | Claude opus (main session) | — | — |
 | Sub-agent (per phase) | Claude opus via Agent tool | — | — |
 | Spec classifier | Claude opus via Agent tool | — | — |
-| Roundtable lens (codex phase, any lens) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
-| Roundtable lens (claude phase, any lens) | Claude opus via Agent tool | — | — |
-| Codex mid-round summary (Step 2 / 4b Phase 2) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
-| Claude end-round summary / round-state editor | Claude opus via Agent tool | — | — |
-| Consensus editor (single author, v0.4) | Claude opus via Agent tool | — | — |
-| Cross-rounds final review (Step 2 / 4b Phase 6) | Claude opus 4.7 xhigh via Agent tool | — | — |
+| Codex spec sanity (Step 2) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
 | Plan writer | Claude opus via Agent tool | — | — |
+| Plan review (Step 4) | gstack `autoplan` skill (main session; internal CEO/eng/design/DevEx roles + codex cross-voice, Claude-only graceful degradation) | — | — |
 | Plan integrity review (primary) | Claude opus via Agent tool | — | — |
 | Plan integrity review (secondary) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
-| Phase worker | **Claude** via `Agent` tool — `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | — | escalate `model_tier` one step (sonnet→opus, haiku→sonnet) on retry, log as `model_degraded=true` |
+| Phase worker | **Claude** via `Agent` tool — `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | — | escalate `model_tier` one step (sonnet→opus, haiku→sonnet) on retry, log as `model_degraded=true` |
 | Phase verifier | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
 | Decision gate (primary) | Claude opus via Agent tool | — | — |
 | Decision gate (secondary) | Codex GPT-5.5 via codex exec | xhigh | gpt-5.4 high |
@@ -925,7 +692,7 @@ externally visible, irreversible, or out-of-spec product decisions.
 ## Resume Protocol
 
 1. Read state file; validate `input_sha256` and `implementation_plan_sha256`
-   (and `implementation_plan_post_cross_rounds_sha256` if set) still match.
+   (and `implementation_plan_post_review_sha256` if set) still match.
 2. Verify each PASS commit still exists in git history.
 3. Check worktree for unrelated dirty files.
 4. Permit only pending files recorded in the first non-PASS phase.
@@ -941,7 +708,7 @@ Stop and emit `BLOCKED_*` or escalate to user for:
 - Unrelated dirty worktree at preflight
 - Gating skill failure
 - Required sub-agent unavailable
-- Input classification, spec enhancement, or plan-integrity omission or contradiction
+- Input classification, codex spec sanity, or plan-integrity omission or contradiction
 - Worker asks to widen scope
 - Scope violation (paths outside `file_scope` or inside `do_not_touch`)
 - Verifier mutation (verifier wrote to worktree)

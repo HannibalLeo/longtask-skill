@@ -44,8 +44,7 @@ file unless `--persist-manifest .longtask/state/{spec_basename}/handoff-manifest
 is passed):
 
 1. Read the flat handoff's `plan_path`; resolve `implementation_plan_sha256`
-   from `plan_post_cross_rounds_sha256` (v0.4) or
-   `plan_post_roundtable_sha256` (v0.3 backward compat).
+   from `plan_post_review_sha256`.
 2. Resolve `source_spec_path`, `source_spec_sha256`, `enhanced_spec_path`,
    `enhanced_spec_sha256`, `alignment_matrix_path`, `state_path`,
    `plan_integrity_review_path` from the flat handoff's direct fields.

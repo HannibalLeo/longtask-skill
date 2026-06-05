@@ -3,8 +3,8 @@
 <!-- HYBRID ROUTING NOTE — 强制 dual (last-line-of-defense gate, v0.4)
 Final alignment is the last line of defense before ship.
 
-**This gate enforces MANDATORY DUAL regardless of any roundtable outcome.**
-v0.4 note: roundtable cross-rounds already digest codex+claude per round, but
+**This gate enforces MANDATORY DUAL regardless of any prior review outcome.**
+Note: the Step 4 autoplan review already runs a codex+claude plan review, but
 final-alignment-review is a separate independent gate that runs once at
 end-of-pipeline. It is intentionally redundant with Step 5 plan-integrity
 hybrid review.

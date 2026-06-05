@@ -2,17 +2,17 @@
 
 <!-- ROUTING NOTE
 This prompt runs as a single `codex exec` pass (Codex GPT-5.5 xhigh), NOT Claude Agent.
-Rationale: this is a "second-opinion" audit on the spec/consensus before plan-writer
-runs. Claude has already touched the spec via classifier + (optionally) roundtable +
-consensus editor. A pure-Codex pass with no Claude context here catches omissions,
+Rationale: this is the spec stage's ONLY cross-model check (v0.5 — the old
+multi-role spec roundtable was removed). Claude has already touched the spec via
+the classifier. A pure-Codex pass with no Claude context here catches omissions,
 hallucinations, and internal contradictions that a same-distribution reviewer would
 miss — the same anti-blindspot logic that justifies dual mode in final-alignment.
 
-When this step runs:
-- ALWAYS, regardless of input_shape (plan_with_source / self_contained_plan / source_spec / hybrid).
-- After Step 2 (Roundtable) completes (or is skipped); before Step 4 (Plan-writer).
-- Codex reads whichever spec artifact is current: enhanced-spec from consensus
-  editor if Step 2 ran, otherwise the raw input.
+When this step runs (Step 2):
+- For all non-pre_vetted inputs, regardless of input_shape (source_spec / hybrid /
+  self_contained_plan / plan_with_source). pre_vetted inputs MAY skip Step 2.
+- Before Step 3 (Plan-writer).
+- Codex reads the current spec artifact (the raw input).
 
 Why before plan-writer (not after): the goal is to surface gaps so plan-writer
 either (a) plans repair phases for them, (b) escalates to user, or (c) explicitly
@@ -21,8 +21,7 @@ means the plan-integrity review has to re-derive them — wasteful.
 -->
 
 Substitutions: `{spec_path}`, `{spec_sha256}`, `{spec_text}`, `{source_spec_path}`,
-`{source_spec_text}`, `{classification_json}`, `{roundtable_consensus_path}` (or empty),
-`{output_path}`.
+`{source_spec_text}`, `{classification_json}`, `{output_path}`.
 
 ---
 
@@ -34,19 +33,18 @@ and the classification metadata. You do NOT write code. You do NOT propose
 rewrites. You produce a structured finding report so Claude main-line can decide:
 
 - `CLEAN` → proceed straight to plan-writer
-- `NEEDS_REVISION` → either loop back to consensus editor (if Step 2 ran) or
-  feed your findings to plan-writer as "known concerns" to address per-phase
-  (orchestrator decides; not your call)
+- `NEEDS_REVISION` → the orchestrator runs exactly one spec-revision pass:
+  your findings are fed to plan-writer as "known concerns" to address
+  per-phase (orchestrator decides; not your call)
 
 ## Inputs
 
-- `{spec_path}` — the current spec artifact (raw input or consensus-edited)
+- `{spec_path}` — the current spec artifact (the raw input)
 - `{spec_sha256}` — sha256 of `{spec_text}`
 - `{spec_text}` — spec content (inline below)
 - `{source_spec_path}` (may be empty for self_contained_plan)
 - `{source_spec_text}` (may be empty)
 - `{classification_json}` — classifier output (gives input_shape, risk_reasons)
-- `{roundtable_consensus_path}` (may be empty if Step 2 skipped)
 
 ## What to look for (4 categories)
 
@@ -131,7 +129,7 @@ prose outside the JSON):
     }
   ],
   "confidence": 0.0,
-  "recommended_action": "proceed_to_plan_writer | loop_to_consensus_editor | ask_human"
+  "recommended_action": "proceed_to_plan_writer | revise_spec | ask_human"
 }
 ```
 

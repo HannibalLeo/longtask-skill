@@ -1,9 +1,9 @@
 ---
 name: longtask
-description: Multi-phase spec execution — Claude opus orchestrator + per-phase Claude worker (sonnet/opus, tier-selectable per phase) + Codex GPT-5.5 verifier via `codex exec --output-schema`, with cross-rounds roundtable (codex lenses → codex mid-summary → claude lenses → claude end-summary, repeated 1-3 rounds per stage) and opus 4.7 xhigh terminal review. Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
+description: Multi-phase spec execution — Claude opus orchestrator + per-phase Claude worker (sonnet/opus, tier-selectable per phase) + Codex GPT-5.5 verifier via `codex exec --output-schema`. Planning is lightweight: one automated Codex spec-sanity pass, then plan review delegated to the gstack `autoplan` skill (CEO/eng/design/DevEx roles + codex cross-voice + user approval gate). Use when a written spec file declares phased work (P1, P2…) and strict separation of executor/verifier/judge is desired. Triggers on /longtask, "execute this spec", "run the spec", "long task", "长任务", "spec 文件执行".
 ---
 
-# /longtask — v0.4 cross-rounds (Claude + Codex)
+# /longtask — v0.5 (Claude + Codex, autoplan plan review)
 
 > **Quality bar — non-negotiable.** No hidden defects, no minimal patches that paper over symptoms. Every decision serves "ships to real users", not "the test happens to be green". The 4 production-grade principles (simplicity beats cleverness, evals before optimization, tight iteration over big leaps, taste is part of shippable) are summarized in [README.md](README.md).
 
@@ -11,7 +11,7 @@ description: Multi-phase spec execution — Claude opus orchestrator + per-phase
 
 Use when ALL of: a written spec file declares phased work (P1, P2, P3...); task is M/L (>5 min, multi-step); user wants Codex CLI to do the bulk of code work while Claude owns architecture judgment, judgment gates, and final verification.
 
-**Recommended starting point** when the spec does not yet exist: run `gstack /office-hours` to interrogate the idea, then `gstack /plan-ceo-review` + `gstack /plan-eng-review` to lock product/architecture decisions. v2 also supports running the **built-in spec-classifier → roundtable → plan-writer → plan-integrity** pipeline against a raw `source_spec` input — see `## Pipeline overview` step 1-4.
+**Recommended starting point** when the spec does not yet exist: run `gstack /office-hours` to interrogate the idea, then `gstack /plan-ceo-review` + `gstack /plan-eng-review` to lock product/architecture decisions. v2 also supports running the **built-in spec-classifier → codex spec sanity → plan-writer → autoplan plan review → plan-integrity** pipeline against a raw `source_spec` input — see `## Pipeline overview` steps 1-5.
 
 Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
 
@@ -20,7 +20,7 @@ Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
 | Step | Owner | Scope |
 |---|---|---|
 | **(a) Claude does architecture** | Claude opus (main session + Agent tool) | Spec classification, plan writing, plan-integrity review. All "understand the spec, split it, decide who verifies" judgments. |
-| **(b) Claude + Codex discuss** | Mixed | Cross-rounds roundtable (v0.4): every round is a cross-pair (codex × all lenses → codex xhigh mid-summary → claude × all lenses → claude opus end-summary). Lenses are NOT model-bound — every lens runs both codex and claude per round. Consensus editor is single Claude opus; cross-rounds-final-review (opus 4.7 xhigh) is the terminal gate. |
+| **(b) Claude + Codex discuss** | Mixed | Two lightweight checkpoints: (1) **Codex spec sanity** (Step 2) — one automated `codex exec` pass over the spec → `CLEAN` \| `NEEDS_REVISION`. (2) **Plan review via `autoplan`** (Step 4) — the gstack `autoplan` skill runs CEO/eng/design/DevEx roles, each as a Claude subagent AND a Codex cross-voice, auto-decides via 6 principles, and surfaces taste decisions at a user approval gate. No longtask-owned roundtable / lens prompts / codex mid-summaries anymore. |
 | **(c) Claude worker writes; Codex verifier judges** | Claude (sonnet default, opus / haiku per `model_tier`) via Agent tool + Codex GPT-5.5 via `codex exec --output-schema` | Phase worker writes code in a fresh Claude Agent; phase verifier is a separate Codex GPT-5.5 process that re-reads the working tree, runs `verify_cmd`, and emits schema-driven JSON. The cross-model split is load-bearing: the judge has a different distribution of blindspots than the worker, and `--output-schema` enforces parseable JSON regardless of how the worker phrased its own progress. |
 | **(d) Claude finalizes** | Claude opus (main session) | Reads every verifier JSON to decide PASS/retry, runs hybrid decision/plan-integrity/final-alignment gates, runs final E2E2 (browser/screenshots via Claude harness), syncs docs, ships. |
 
@@ -36,23 +36,23 @@ Skip for: <5 min tasks; single-file edits where verifying is "read the diff".
    session never read source files during PASS/FAIL judgment (preserves
    context budget) but hold final authority (preserves safety).
 
-## Pipeline overview (v0.4)
+## Pipeline overview (v0.5)
 
 ```
 Step 0  Preflight              Validate spec frontmatter + state schema
-Step 1  Classifier             Claude Agent → JSON {input_shape, cross_rounds, required_lenses, risk_reasons, pre_vetted}
-                               cross_rounds ∈ {1, 2, 3}; pre_vetted gates spec-stage skip
-Step 2  Spec-roundtable        (skippable iff pre_vetted) cross_rounds × cross-pair rounds
-                               (codex × lenses → codex mid-summary → claude × lenses → claude end-summary)
-                               → spec-consensus-editor (single Claude opus, writes enhanced-spec)
-                               → cross-rounds-final-review (opus 4.7 xhigh, terminal verdict)
-Step 3  Codex spec sanity      (UNCONDITIONAL) Codex GPT-5.5 single pass: omissions / hallucinations / contradictions
-                               / reward-hacking bait → JSON {verdict: CLEAN | NEEDS_REVISION}
-Step 4  Plan-writer            Claude Agent invokes superpowers:writing-plans → implementation_plan.md
+Step 1  Classifier             Claude Agent → JSON {input_shape, required_lenses (advisory), risk_reasons, pre_vetted}
+                               pre_vetted gates the spec-stage skip
+Step 2  Codex spec sanity      (skippable iff pre_vetted) ONE automated Codex GPT-5.5 pass: omissions /
+                               hallucinations / contradictions / source-spec consistency / reward-hacking bait
+                               → JSON {verdict: CLEAN | NEEDS_REVISION}. CLEAN → plan-writer; NEEDS_REVISION
+                               → exactly one spec-revision pass, then continue. (Merged old Step 2 + Step 3.)
+Step 3  Plan-writer            Claude Agent invokes superpowers:writing-plans → implementation_plan.md
                                (multi-agent dispatch when plan has ≥3 phases)
-Step 4b Plan-roundtable        (ALWAYS RUN, cross_rounds ≥ 1) Same cross-pair shape as Step 2
-                               → plan-consensus-editor (single Claude opus, rewrites plan.md in place)
-                               → cross-rounds-final-review (opus 4.7 xhigh, terminal verdict)
+Step 4  Plan review (autoplan) (ALWAYS RUN) Invoke gstack `autoplan` from the MAIN session on the plan file.
+                               autoplan runs CEO/eng/design/DevEx roles (each Claude subagent + Codex
+                               cross-voice), auto-decides via 6 principles, surfaces taste decisions at a
+                               user approval gate, writes `## GSTACK REVIEW REPORT` into the plan file.
+                               Orchestrator reads the plan back, records the report pointer in state.
 Step 5  Plan-integrity         HYBRID gate (Claude primary + Codex secondary) → PASS or BLOCKED_SPEC_REWRITE
 Step 6  Per-phase loop         For each Pn: Claude sub-agent dispatches Claude worker (Agent tool, model from model_tier) → scope gate → Codex verifier (codex exec --output-schema)
                                → main-line JSON review → commit on PASS
@@ -61,59 +61,47 @@ Step 8  Final-alignment        MANDATORY DUAL hybrid gate (Claude + Codex always
 Step 9  Ship (optional)        spec.docs_sync → update-docs; spec.ship → gstack /ship
 ```
 
-**Step 2 (spec-roundtable)** is skipped **only** when classifier emits
+**Step 2 (codex spec sanity)** MAY be skipped **only** when classifier emits
 `pre_vetted.is_pre_vetted == true` (inputs of shape `plan_with_source` /
 `self_contained_plan`, or `source_spec` whose `gating: [office-hours,
 plan-ceo-review, plan-eng-review]` already ran in the same session). All other
-inputs run spec-roundtable at `cross_rounds`. **Step 4b (plan-roundtable) is
-never skipped** — every plan gets at least 1 cross-pair round before
+inputs run the one-pass Codex sanity. **Step 4 (plan review via autoplan) is
+never skipped** — every plan gets a full multi-role review before
 plan-integrity, because the plan is the concrete execution contract and
 late-stage criticism is the cheapest defense against bad phase decomposition.
-**Step 3 is also unconditional** — codex sanity audit always runs as the
-cross-model second opinion on the spec.
 
-**Lens count policy (REQ-003 / REQ-004 — 2026-05-27 refactor):**
+**autoplan availability is hard-required.** Step 4 invokes the gstack
+`autoplan` skill from the main session (it is interactive — its approval gate
+must reach the user, so it cannot run in an isolated subagent). If gstack /
+`autoplan` is not installed, **Step 4 FAILS with a clear message**
+(`BLOCKED_AGENT_TOOL_FAILURE`) — plan review is never silently skipped.
+autoplan internally owns the role set (CEO / eng / design / DevEx), the Codex
+cross-voice, and graceful degradation to Claude-only when Codex is
+unavailable; longtask no longer maintains plan-stage lens prompts or codex
+mid-summaries.
 
-- Spec-stage `required_lenses` defaults to **≤ 3 lenses** (engineering +
-  one product/CEO lens + one domain lens). Lenses 4–5 are illegal unless
-  `risk_reasons[]` contains a matching cross-domain-risk item naming the
-  lens. Wide-net 5-lens classification is the cost-explosion path.
-- Plan-stage roundtable consumes a **pruned subset** —
-  `plan_required_lenses` defaults to `engineering` + `ceo-product`. Other
-  lenses (`ui-design`, `domain-expert`, `design`) opt in only when at
-  least one plan phase has `file_scope` matching that lens's domain
-  (`ui-design` → frontend/UI globs; `domain-expert` → domain-specific
-  paths; `design` → user-visible surface paths). Orchestrator persists
-  the resolved `plan_required_lenses` plus a one-line
-  `plan_lens_pruning_reason` to state for audit.
+**Lens policy:** spec-stage `required_lenses` is now **advisory only** — it
+documents which perspectives the spec needs, but neither Step 2 (single Codex
+pass, no per-lens fan-out) nor Step 4 (autoplan owns its own roles) consumes it
+as a dispatch input.
 
-**Subagent count per stage** = `2 × |lens_set_for_stage| × cross_rounds`
-(lens dispatches) `+ 2 × cross_rounds` (mid-summary + end-summary per round)
-`+ 2` (consensus-editor + cross-rounds-final-review).
-
-- Default spec-stage shape (3 lenses): `8 × cross_rounds + 2` →
-  cross_rounds=1/2/3 → **10 / 18 / 26** dispatches.
-- Default plan-stage shape (2 lenses, pruned): `6 × cross_rounds + 2` →
-  cross_rounds=1/2/3 → **8 / 14 / 20** dispatches.
-- Worst case (spec=5 lenses + plan=4 lenses) is gated behind explicit
-  cross-domain risk justification; the classifier may not reach it on
-  ambiguous specs.
-
-The shape is sequenced *within* a round (Phase 1-4) but
-*parallel across lenses within each Phase*.
+**Planning-stage subagent shape (v0.5):** the planning stage is now
+**1 Codex sanity call (Step 2) + 1 `autoplan` invocation (Step 4)**, plus the
+Claude classifier (Step 1), plan-writer (Step 3, single or multi-agent), and
+the Step 5 plan-integrity hybrid pair. The old roundtable subagent-count
+formulas (the `8 × N + 2` round-loop math) are gone — there is no round loop.
 
 ## Where details live (load-bearing — read before writing specs/plans)
 
 | Artifact | What lives here | What does NOT live here |
 |---|---|---|
-| **Source spec** (you write) | Product intent, REQ-*, success criteria, business constraints | Implementation details, architecture decisions (those are derived in roundtable) |
-| **Enhanced spec** (consensus editor writes) | Architecture decisions, formulas, threshold tables, schema shapes, named invariants, non-obvious constraints, REQ-E-* clarifications, out-of-scope items with rationale | Phase decomposition, code, test snippets |
-| **Implementation plan** (plan-writer writes) | Phase decomposition (P1, P2, ...) — for each phase: `goals`, `file_scope`, `do_not_touch`, `verify_cmd`, `verify_passes_when`, `dod`, `source_requirements`, `max_retry_rounds`, optional `model_tier` / `reasoning_effort`; Source Requirements table; Alignment Matrix; Final E2E2 contract | Code snippets, test code, TDD micro-steps ("Step 1: write failing test..."), per-file change recipes, formulas, threshold tables, architecture diagrams, roundtable consensus dumps — **all these belong in the enhanced spec or are derived at runtime by the worker** |
+| **Source spec** (you write) | Product intent, REQ-*, success criteria, business constraints, architecture decisions, formulas, threshold tables, schema shapes, named invariants, non-obvious constraints, out-of-scope items with rationale | Phase decomposition, code, test snippets — those are derived by plan-writer / the worker |
+| **Implementation plan** (plan-writer writes) | Phase decomposition (P1, P2, ...) — for each phase: `goals`, `file_scope`, `do_not_touch`, `verify_cmd`, `verify_passes_when`, `dod`, `source_requirements`, `max_retry_rounds`, optional `model_tier` / `reasoning_effort`; Source Requirements table; Alignment Matrix; Final E2E2 contract | Code snippets, test code, TDD micro-steps ("Step 1: write failing test..."), per-file change recipes, formulas, threshold tables, architecture diagrams, architecture-decision dumps — **all these belong in the source spec or are derived at runtime by the worker** |
 | **Phase commit + worker output** | Real code, real tests, real diffs | — |
 | **Verifier JSON** | PASS/FAIL + dod_results + reward_hacking_signals + verify_cmd output | — |
 
 The plan is a **thin executable contract**, not a code draft. Detail that
-already lives in the enhanced spec MUST NOT be copied into the plan.
+already lives in the source spec MUST NOT be copied into the plan.
 Implementation details that the worker would derive correctly from a
 clear contract MUST NOT be pre-decided in the plan. Worker input already
 includes the plan as context AND the worker emits code as output — any
@@ -121,21 +109,21 @@ code in the plan is paid twice (input + output tokens for the same
 content). TDD rhythm is enforced by the worker's TDD sub-skill, not by
 plan-writer's micro-step lists.
 
-**Line budget** (enforced by `plan-writer.md` / `plan-consensus-editor.md`):
+**Line budget** (enforced by `plan-writer.md`):
 - Per phase block: target 80-150 lines, hard cap 200 lines.
 - Total plan: target ≤ 720 lines, hard cap 1000 lines regardless of
   phase count.
-- Exceeding the hard cap → `BLOCKED_PLAN_REPAIR`: route detail to
-  enhanced spec or split phases. Do not weaken the budget.
+- Exceeding the hard cap → `BLOCKED_PLAN_REPAIR`: route detail to the
+  source spec or split phases. Do not weaken the budget.
 
-## Spec schema (REQUIRED — orchestrator validates at Step 1 or Step 4)
+## Spec schema (REQUIRED — orchestrator validates at Step 1 or Step 3)
 
 > **Where v2 frontmatter validation happens** — this matters for understanding
 > what to put on a hand-written design doc vs. an executable plan:
 >
 > - **Hand-written `source_spec` / `hybrid` design docs** (the typical input):
 >   you do NOT need to add `source_spec_path` / `final_verify_cmd` / etc. to
->   the frontmatter. plan-writer (Step 4) generates a v2-formatted execution
+>   the frontmatter. plan-writer (Step 3) generates a v2-formatted execution
 >   plan from your design doc, and the v2 schema is validated on **that
 >   generated plan**, not on your input.
 > - **Pre-built `plan_with_source` / `self_contained_plan` inputs**: these
@@ -176,7 +164,7 @@ default_model_tier: sonnet   # one of: haiku | sonnet | opus
 # Tier → model:
 #   haiku  → claude-haiku-4-5   (mechanical / trivial phases only)
 #   sonnet → claude-sonnet-4-6  (DEFAULT — covers most implementation work)
-#   opus   → claude-opus-4-7    (novel design, cross-module, fragile refactors)
+#   opus   → claude-opus-4-8    (novel design, cross-module, fragile refactors)
 # Resolution order at dispatch time:
 #   phase.model_tier  >  spec.default_model_tier  >  hard fallback 'sonnet'
 # Missing → BLOCKED_SPEC. Unrecognised tier → BLOCKED_SPEC.
@@ -195,28 +183,18 @@ default_reasoning_effort: medium  # one of: medium | high | xhigh
 # Retry rounds auto-escalate one tier (medium → high → xhigh) unless the
 # phase explicitly pins reasoning_effort.
 # Scope: applies ONLY to worker / retry-worker / verifier. Judgment-heavy
-# roles (classifier, roundtable lenses, mid-summary, consensus editor, plan
-# writer, plan-integrity, decision-review, final-alignment, cross-rounds
-# final review) stay at `xhigh` regardless of this field.
+# roles (classifier, codex spec sanity, plan writer, plan-integrity,
+# decision-review, final-alignment) stay at `xhigh` regardless of this field.
 # Missing → BLOCKED_SPEC. Unrecognised effort → BLOCKED_SPEC.
 # Ignored when this spec is executed by claude-longtask.
 
 # === OPTIONAL v2 fields ===
 
-cross_rounds: 2   # one of: 1, 2, 3  (omit to let classifier decide)
-# Override classifier's cross_rounds choice. Applied to BOTH spec-roundtable
-# (Step 2) and plan-roundtable (Step 4b). Each round is a cross-pair:
-#   Phase 1: codex × all lenses (parallel)
-#   Phase 2: codex xhigh mid-round summary
-#   Phase 3: claude × all lenses (parallel, sees Phase 1 + Phase 2 output)
-#   Phase 4: claude opus end-round summary (writes round-state)
-# After the final round, a single Claude opus consensus-editor rewrites the
-# enhanced spec / plan in place, then a opus 4.7 xhigh cross-rounds-final-review
-# does the terminal PASS / NEEDS_REVISION verdict.
-#
-# REMOVED v0.4: `roundtable_mode` (hybrid/dual). Cross-model heterogeneity is
-# now built into every round by construction (every lens runs both codex and
-# claude per round) — there is no longer a knob.
+# REMOVED v0.5: the round-count knob. The spec/plan roundtable was removed
+# entirely. The spec stage is one automated Codex sanity pass (Step 2); the
+# plan stage delegates to the gstack `autoplan` skill (Step 4). There is no
+# round-count knob anymore.
+# REMOVED v0.4: `roundtable_mode` (hybrid/dual).
 # REMOVED v0.3.x: legacy `discussion_required`, `discussion_rounds`,
 # `spec_rounds`, `plan_rounds`, `tier_label`.
 
@@ -306,14 +284,11 @@ Missing required field → orchestrator BLOCKED_SPEC, points at line/phase, no C
 ```
 Claude main session (opus)                = Orchestrator
   ├─ reads spec, state, JSON outputs
-  ├─ dispatches Claude Agents (classifier, roundtable claude-phase lenses,
-  │   claude end-round summary, consensus-editor, cross-rounds-final-review (opus 4.7 xhigh),
-  │   plan-writer, plan-integrity primary, final-e2e2, final-alignment primary,
-  │   docs-sync, ship)
+  ├─ dispatches Claude Agents (classifier, plan-writer, plan-integrity primary,
+  │   final-e2e2, final-alignment primary, docs-sync, ship)
+  ├─ invokes gstack `autoplan` Skill from this session (Step 4 plan review)
   └─ dispatches `codex exec` children for:
-        roundtable codex-phase lenses (all 5 lenses, every round)
-        codex mid-round summary (every round)
-        codex spec sanity (Step 3)
+        codex spec sanity (Step 2)
         plan-integrity secondary
         decision-review secondary
         final-alignment secondary (MANDATORY DUAL)
@@ -338,8 +313,7 @@ Claude worker children (Agent tool, one-shot, model from model_tier)
   ↓
 codex exec children (one-shot, GPT-5.5)
   ├─ codex-verifier        — read-only; runs verify_cmd; produces schema JSON
-  ├─ roundtable codex lens — Phase 1 of each cross-pair round, all lenses parallel
-  ├─ codex mid-summary     — Phase 2 of each cross-pair round, xhigh
+  ├─ codex spec sanity     — Step 2 one-pass spec audit, xhigh
   └─ judgment secondary    — plan-integrity / decision-review / final-alignment
 ```
 
@@ -356,11 +330,9 @@ Codex sub-agents are limited to **two role categories** in the claude-flow
 (`claude-longtask`, `claude-longtask-plan`, `claude-longtask-code`):
 
 - **Discussion** — codex is invoked for cross-model second opinion only:
-  - spec-roundtable codex-phase lens (Step 2 Phase 1)
-  - plan-roundtable codex-phase lens (Step 4b Phase 1)
-  - codex mid-round summary (Step 2 Phase 2 / Step 4b Phase 2 — emits the
-    digest per REQ-005)
-  - codex spec sanity audit (Step 3 — unconditional second-opinion pass)
+  - codex spec sanity audit (Step 2 — the one automated spec-stage pass)
+  - (plan-stage codex cross-voice is handled internally by `autoplan` at
+    Step 4, not dispatched by the orchestrator)
 - **Verification** — codex is invoked as schema-bound JSON judge only:
   - phase verifier (Step 6 — `codex exec --output-schema`)
   - plan-integrity secondary (Step 5 hybrid)
@@ -371,10 +343,7 @@ Codex sub-agents are limited to **two role categories** in the claude-flow
 roles MUST NOT be dispatched to codex:
 
 - spec classifier
-- spec consensus editor / plan consensus editor (single Claude opus authors)
 - plan writer
-- spec round-state editor / plan round-state editor (Claude end-round summary)
-- spec / plan cross-rounds final review (Claude opus 4.7 xhigh)
 - decision-review primary, plan-integrity primary, final-alignment primary
 - final E2E2 report (Claude Agent + gstack browse skill)
 - docs-sync (`update-docs`), ship (`/ship`)
@@ -385,29 +354,18 @@ or Verification to be assigned to codex; otherwise it stays on Claude. The
 Role × Model matrix below has been audited against this rule (no codex row
 has an authoring or worker primary).
 
-## Role × Model dispatch matrix (v0.4)
+## Role × Model dispatch matrix (v0.5)
 
 | Role | Model | Dispatch | Step |
 |---|---|---|---|
 | Orchestrator | Claude main (opus) | this session | (a) |
 | Per-phase sub-agent | Claude Agent (opus) | Agent tool | (a) |
 | **Spec classifier** | Claude opus | Agent tool | **(a)** |
-| Spec-roundtable lens (codex phase, any lens) | Codex GPT-5.5 xhigh | `codex exec` | (b) |
-| Spec-roundtable codex mid-round summary | Codex GPT-5.5 xhigh | `codex exec` | (b) |
-| Spec-roundtable lens (claude phase, any lens) | Claude opus | Agent tool | (b) |
-| Spec-roundtable claude end-round summary (round-state) | Claude opus | Agent tool | (b) |
-| **Spec consensus editor** (single author, v0.4) | Claude opus | Agent tool | (b) |
-| **Spec cross-rounds final review** | **Claude opus 4.7 xhigh** | Agent tool | **(b)+(d)** |
-| **Codex spec sanity** | **Codex GPT-5.5 xhigh** (unconditional second-opinion audit) | `codex exec --output-schema` | **(b)** |
+| **Codex spec sanity** (Step 2 — the one automated spec-stage pass) | **Codex GPT-5.5 xhigh** | `codex exec` | **(b)** |
 | **Plan-writer** | **Claude opus** (invokes `superpowers:writing-plans`; multi-agent dispatch when plan ≥3 phases) | Agent tool | **(a)** |
-| Plan-roundtable lens (codex phase, any lens) | Codex GPT-5.5 xhigh | `codex exec` | (b) |
-| Plan-roundtable codex mid-round summary | Codex GPT-5.5 xhigh | `codex exec` | (b) |
-| Plan-roundtable lens (claude phase, any lens) | Claude opus | Agent tool | (b) |
-| Plan-roundtable claude end-round summary (round-state) | Claude opus | Agent tool | (b) |
-| **Plan consensus editor** (single author, v0.4) | Claude opus | Agent tool | (b) |
-| **Plan cross-rounds final review** | **Claude opus 4.7 xhigh** | Agent tool | **(b)+(d)** |
+| **Plan review (Step 4)** | **gstack `autoplan` skill** — internal CEO/eng/design/DevEx roles, each a Claude subagent + Codex cross-voice; Claude-only graceful degradation | Skill tool (main session) | **(b)** |
 | **Plan-integrity review** | **Claude opus primary + Codex GPT-5.5 xhigh secondary** | hybrid (decision #6) | **(a)+(d)** |
-| Phase worker | **Claude** — model selected per phase: `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | `Agent` tool (one fresh Agent per round) | (c) |
+| Phase worker | **Claude** — model selected per phase: `claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-8`, resolved from `phase.model_tier > spec.default_model_tier > 'sonnet'` | `Agent` tool (one fresh Agent per round) | (c) |
 | **Phase verifier** | Codex GPT-5.5 (schema-driven JSON) → Claude main-line reads JSON | `codex exec --output-schema` → Claude review | **(c)→(d)** |
 | **Decision gate** | **Claude opus primary + Codex GPT-5.5 xhigh secondary** | hybrid (decision #6) | **(b)+(d)** |
 | Final E2E2 report | Claude opus | Agent tool (gstack browse skill) | (d) |
@@ -415,75 +373,47 @@ has an authoring or worker primary).
 | Docs sync (`update-docs`) | Claude opus | Agent tool / Skill tool | (d) |
 | Ship (`/ship`) | Claude main | Skill tool (gstack /ship) | (d) |
 
-**Lenses are NOT model-bound in v0.4.** Every selected lens (default 5:
-engineering / ceo-product / design / ui-design / domain-expert) runs ONCE as
-codex (Phase 1 of a round) and ONCE as Claude Agent (Phase 3 of a round).
-Cross-model heterogeneity is built into every round by construction.
+## Planning-stage review semantics (v0.5)
 
-## Cross-rounds roundtable semantics (v0.4)
+The spec/plan roundtable (codex × lenses → mid-summary → claude × lenses →
+end-summary, repeated for N rounds) is **gone**. Planning now has two
+lightweight, well-separated review checkpoints:
 
-Every roundtable round is a **cross-pair** — codex and claude both reading
-the same artifact, sequenced so the second model sees the first's output:
+**Spec stage — one automated Codex pass (Step 2).** A single `codex exec`
+audits the spec for omissions / hallucinations / contradictions /
+source-spec consistency / reward-hacking bait and returns
+`CLEAN | NEEDS_REVISION`. `CLEAN` → straight to plan-writer. `NEEDS_REVISION`
+→ exactly one spec-revision pass (orchestrator applies Codex's findings as
+`known_concerns[]` for plan-writer), then continue. `pre_vetted` inputs may
+skip Step 2. No multi-role roundtable.
 
-```
-Round R (1..cross_rounds):
-  Phase 1: codex × all required_lenses (parallel codex exec)
-  Phase 2: codex xhigh mid-round summary (1 codex exec)
-  Phase 3: claude × all required_lenses (parallel Claude Agent)
-           Each claude-phase lens reads:
-             - the same artifact
-             - the codex-phase output for ALL lenses this round
-             - the codex mid-summary
-             - prior round-state (if any)
-  Phase 4: claude opus end-round summary (writes round-state markdown + JSON)
-```
+**Plan stage — delegated to gstack `autoplan` (Step 4).** The orchestrator
+invokes the `autoplan` Skill from the **main session** (it is interactive —
+its approval gate must reach the user, so it cannot run in an isolated
+subagent). autoplan:
 
-The codex side surfaces same-distribution convergence and codex-side
-blindspots; the claude side either confirms (real consensus) or
-disagrees (codex blindspot corrected); the round-state captures both
-verdicts and the unresolved cross-phase disagreements explicitly.
+- runs CEO → design → eng → DevEx review roles in sequence, **each as both a
+  Claude subagent AND a Codex cross-voice** (built-in cross-model review);
+- auto-decides most points via its 6 decision principles, surfacing only
+  taste decisions / codex disagreements / User Challenges at a final user
+  approval gate;
+- **degrades gracefully to Claude-only when Codex is unavailable** (no hard
+  fail on missing Codex);
+- writes its verdict into the plan file as a `## GSTACK REVIEW REPORT`
+  section per its own contract.
 
-The previous `hybrid` / `dual` `roundtable_mode` knob is gone. Heterogeneity
-is built in — there is no longer a single-model degraded mode at all.
+After autoplan returns, the orchestrator reads the plan back, recomputes the
+plan sha256 (`implementation_plan_post_review_sha256`), and records the report
+pointer (`autoplan_review_report_path`) plus `autoplan_review_status` in state.
 
-**Length policy — `cross_rounds ∈ {1, 2, 3}`, three tiers (REQ-007 —
-2026-05-27 refactor: default = 1, classifier auto-cap = 2, tier 3 is
-user-forced via spec frontmatter only):**
+**Always run; never silently skipped.** Plan review via autoplan runs for
+every input shape, including `pre_vetted`. If gstack / `autoplan` is not
+installed, Step 4 FAILS with `BLOCKED_AGENT_TOOL_FAILURE` and a clear install
+message — it is never skipped.
 
-| cross_rounds | Source | When | Per-stage subagent count (5 lenses) |
-|---|---|---|---|
-| **1** | classifier default | Low-risk unvetted `source_spec` / `hybrid`, OR pre-vetted inputs (`pre_vetted.is_pre_vetted == true` skips spec stage entirely; plan stage still runs at cross_rounds=1). Default minimum. | 14 |
-| **2** | classifier auto-cap = 2 | Medium-risk: cross-module contract change / new external dependency / plan will have ≥4 phases / ambiguous scope. Cite reason in `risk_reasons`. The classifier may also use 2 with a high-risk trigger cited (escalation to 3 is the user's call, not the classifier's). | 26 |
-| **3** | **user-forced via `spec.cross_rounds: 3` in frontmatter only** — classifier NEVER emits 3 | High-risk that the user has explicitly elected to spend round-3 budget on: irreversible data migration / regulatory / clinical / patient-safety / security boundary / breaking external API / cross-module blast radius (>3 modules). | 38 |
-
-- **plan-roundtable is non-skippable.** Even when `pre_vetted == true` (spec
-  stage skipped), plan stage runs at the chosen `cross_rounds` because the
-  plan is the final execution contract.
-- **No mode knob in v0.4.** Cross-model heterogeneity is structural, not
-  optional. If either Codex or Claude dispatch fails on any lens →
-  `BLOCKED_CODEX_WRAPPER_FAILURE` / `BLOCKED_AGENT_TOOL_FAILURE`, not silent
-  degradation.
-- **No tier > 3.** Empirical observation: rounds 4+ within a stage restate
-  earlier arguments rather than surface new ones. If a risk truly warrants
-  more scrutiny than `cross_rounds: 3`, that is a `source_spec` rewrite
-  signal, not a tuning-knob signal.
-- **Pre-vetting is orthogonal to risk.** A high-risk pre-vetted plan still
-  runs plan-roundtable at `cross_rounds: 3`. `pre_vetted` only gates the
-  spec-stage skip; it does not lower the round count.
-
-**Mode resolution (orchestrator never asks the user):**
-```
-spec.cross_rounds (frontmatter)  >  classifier.cross_rounds  >  classifier default (1)
-```
-The classifier is empowered to escalate based on `risk_reasons` up to the
-auto-cap of `cross_rounds: 2`. **Classifier MUST NOT emit `cross_rounds: 3`
-on its own**; if a high-risk trigger fires, the classifier still emits
-`cross_rounds: 2` with the trigger cited in `risk_reasons` and the user
-decides whether to override upward via `spec.cross_rounds: 3` in
-frontmatter. The orchestrator rejects any classifier JSON with
-`cross_rounds == 3` and re-classifies. User-side downward overrides via
-frontmatter (e.g., "I know better, run only 1 round even though classifier
-said 2") are honoured.
+longtask no longer maintains its own plan-stage lens prompts or codex
+mid-summaries; autoplan owns the role set, the Codex cross-voice, and the
+degradation policy.
 
 ## Hybrid judgment gates — reconciliation (decision #6)
 
@@ -569,10 +499,11 @@ The enum is stable. Detailed stderr/exit/repro lives in the per-BLOCKED report, 
 
 ## Codex CLI invocation (`lib/codex-wrapper.sh`)
 
-All remaining Codex children — **phase verifier** (Step 6), roundtable lenses
-(Steps 2 / 4b), roundtable mid-summary, codex spec sanity (Step 3),
-plan-integrity / decision-review / final-alignment secondaries — go through
-`lib/codex-wrapper.sh`. **The Step 6 worker no longer uses this wrapper** —
+All remaining Codex children — **phase verifier** (Step 6), codex spec sanity
+(Step 2), plan-integrity / decision-review / final-alignment secondaries — go
+through `lib/codex-wrapper.sh`. (autoplan's own Codex cross-voice at Step 4 is
+invoked internally by the autoplan skill, not via this wrapper.) **The Step 6
+worker no longer uses this wrapper** —
 worker dispatch moved to the `Agent` tool with model resolved per phase from
 `model_tier`. It is a stall-only wrapper around `codex exec` with v2 additions:
 
@@ -604,8 +535,8 @@ State lives at `.longtask/state/{spec_basename}.json`. Full reference example: [
 | Group | Keys | Purpose |
 |---|---|---|
 | Identity | `mode`, `spec_path`, `spec_sha256`, `input_path`, `input_sha256`, `input_shape` | Pin the run to a specific spec sha; resume drift check |
-| Spec stage | `classification_path`, `spec_roundtable_skipped_reason`, `spec_cross_round_codex_mid_summary_paths[]`, `spec_cross_round_state_paths[]`, `spec_consensus_editor_path`, `enhanced_spec_path`, `enhanced_spec_sha256`, `spec_update_path`, `spec_cross_rounds_final_review_path`, `spec_cross_rounds_final_review_verdict`, `spec_cross_rounds_residual_risks[]` | Step 1-3 artifacts |
-| Plan stage | `implementation_plan_path`, `implementation_plan_sha256`, `plan_cross_round_codex_mid_summary_paths[]`, `plan_cross_round_state_paths[]`, `plan_consensus_editor_path`, `implementation_plan_post_cross_rounds_sha256`, `plan_cross_rounds_final_review_path`, `plan_cross_rounds_final_review_verdict`, `plan_cross_rounds_residual_risks[]`, `plan_integrity_review_path` | Step 4 / 4b / 5 artifacts |
+| Spec stage | `classification_path`, `spec_sanity_skipped_reason`, `spec_codex_sanity_path`, `spec_codex_sanity_verdict` | Step 1-2 artifacts |
+| Plan stage | `implementation_plan_path`, `implementation_plan_sha256`, `implementation_plan_post_review_sha256`, `autoplan_review_report_path`, `autoplan_review_status`, `plan_integrity_review_path` | Step 3 / 4 / 5 artifacts |
 | Per-phase | `phases.{Pn}.{status, rounds_used, verifier_json_paths[], commit_sha, last_heartbeat, heartbeats[]}` | Step 6 progress + commit chain |
 | Final | `final_report_path`, `final_alignment_review_path` | Step 7-8 artifacts |
 | Model accounting | `model_requests[]` (`{role, requested, actual, reason, model_degraded}`), `agents[]`, `claude_subagents[]`, `codex_subagents[]`, `hybrid_gate_assignments` | Auditability + cost dashboard |
@@ -614,16 +545,17 @@ Minimal example (one phase mid-run):
 
 ```json
 {
-  "mode": "claude-cross-rounds",
+  "mode": "claude-autoplan",
   "spec_path": "...", "spec_sha256": "...",
   "input_shape": "source_spec",
   "implementation_plan_sha256": "...",
-  "implementation_plan_post_cross_rounds_sha256": "...",
+  "implementation_plan_post_review_sha256": "...",
+  "autoplan_review_status": "DONE",
   "phases": {"P1": {"status": "running", "rounds_used": 1, "last_heartbeat": "..."}}
 }
 ```
 
-**Resume protocol:** orchestrator reads state on `/longtask <spec> --resume` (or detects existing state path). Restarts from the first phase whose status is not `PASS`. Re-runs Steps 0-4b only if `input_sha256` differs from current source file (drift → BLOCKED_SPEC).
+**Resume protocol:** orchestrator reads state on `/longtask <spec> --resume` (or detects existing state path). Restarts from the first phase whose status is not `PASS`. Re-runs Steps 0-4 only if `input_sha256` differs from current source file (drift → BLOCKED_SPEC).
 
 ## Prompts and wrapper (file index)
 
@@ -655,19 +587,11 @@ Minimal example (one phase mid-run):
 │   # === Orchestrator + per-phase ===
 │   ├── claude-orchestrator.md                # main session checklist (Owner four-step + 9+1 pipeline)
 │   ├── claude-sub-agent.md                   # per-phase Claude Agent prompt (schema-driven verifier)
-│   # === Step 1-4b (a / b) ===
-│   ├── spec-classifier.md                    # Claude Agent — input classification + tier {0+1, 1+1, 2+1, 3+2}
-│   ├── spec-roundtable.md                    # Step 2 cross-pair lens prompt (codex phase + claude phase, same prompt)
-│   ├── spec-codex-mid-summary.md             # Step 2 Phase 2 codex xhigh mid-round summary (NEW v0.4)
-│   ├── spec-round-state.md                   # Step 2 Phase 4 claude opus end-round summary (round-state)
-│   ├── spec-consensus-editor.md              # single Claude opus consensus → enhanced-spec
-│   ├── spec-codex-sanity.md                  # Codex single-pass spec audit (unconditional Step 3)
-│   ├── plan-writer.md                        # Step 4 — Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
-│   ├── plan-roundtable.md                    # Step 4b cross-pair lens prompt (codex phase + claude phase)
-│   ├── plan-codex-mid-summary.md             # Step 4b Phase 2 codex xhigh mid-round summary (NEW v0.4)
-│   ├── plan-round-state.md                   # Step 4b Phase 4 claude opus end-round summary (round-state)
-│   ├── plan-consensus-editor.md              # single Claude opus consensus that revises plan.md in place
-│   ├── cross-rounds-final-review.md          # Step 2 / 4b Phase 6 opus 4.7 xhigh terminal verdict (NEW v0.4)
+│   # === Step 1-4 (a / b) ===
+│   ├── spec-classifier.md                    # Claude Agent — input classification + pre-vetting (advisory lenses)
+│   ├── spec-codex-sanity.md                  # Step 2 — Codex single-pass spec audit (the one spec-stage check)
+│   ├── plan-writer.md                        # Step 3 — Claude Agent invokes superpowers:writing-plans (multi-agent ≥3 phases)
+│   #   Step 4 plan review = gstack `autoplan` skill (no longtask-owned prompt)
 │   # === Step 5 / 6 / 8 hybrid gates ===
 │   ├── plan-integrity-review.md              # hybrid: Claude primary + Codex secondary
 │   ├── decision-review.md                    # hybrid: Claude primary + Codex secondary
@@ -721,7 +645,7 @@ Split into two files per the 2026-05-27 token-waste refactor (REQ-001 / REQ-002)
 - [`prompts/known-traps-universal.md`](prompts/known-traps-universal.md) — Categories 1–4 (universal across harnesses):
   1. **Codex CLI quirks** — #19945 PTY workaround, prompt must be file path, exit 142 = STALL
   2. **Reward hacking patterns** — mock substitution, assert True, skip/xfail without reason, hardcoded returns, test deletion
-  3. **Scope drift** — worker writes outside file_scope, modifies do_not_touch, gradual cross-round drift
+  3. **Scope drift** — worker writes outside file_scope, modifies do_not_touch, gradual drift across retry rounds
   4. **Verifier integrity** — verifier writing source, skipping verify_cmd, schema-compliant but semantically empty
 - [`prompts/known-traps-claude-only.md`](prompts/known-traps-claude-only.md) — Category 5 (Claude harness specifics only):
   5. **Claude harness specifics** — Agent tool background timeout, 1M context budget, exit 142 ≠ FAIL, `/ship` cannot self-retry

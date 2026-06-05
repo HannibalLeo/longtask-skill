@@ -1,52 +1,23 @@
 {
-  "_comment": "Reference example for .longtask/state/{spec_basename}.json. See SKILL.md '## State file (v2 schema)' for the field table; this file is the long-form example previously embedded in SKILL.md. v0.4 cross-rounds layout.",
+  "_comment": "Reference example for .longtask/state/{spec_basename}.json. See SKILL.md '## State file (v2 schema)' for the field table; this file is the long-form example previously embedded in SKILL.md. v0.5 layout: spec stage = one Codex sanity pass; plan stage = gstack autoplan review (the old roundtable / round-loop fields were removed).",
 
-  "mode": "claude-cross-rounds",
+  "mode": "claude-autoplan",
   "spec_path": "...",
   "spec_sha256": "...",
   "input_path": "<source_spec_path>",
   "input_sha256": "<source_spec_sha256>",
   "input_shape": "source_spec | hybrid | plan_with_source | self_contained_plan",
   "classification_path": ".longtask/state/{spec_basename}/classification.json",
-  "spec_roundtable_skipped_reason": null,
 
-  "spec_cross_round_codex_mid_summary_paths": [
-    ".longtask/reports/{spec}/rounds/spec-round-1-codex-mid-summary.md",
-    ".longtask/reports/{spec}/rounds/spec-round-2-codex-mid-summary.md"
-  ],
-  "spec_cross_round_state_paths": [
-    ".longtask/reports/{spec}/rounds/spec-round-1-state.md",
-    ".longtask/reports/{spec}/rounds/spec-round-2-state.md"
-  ],
-  "spec_consensus_editor_path": ".longtask/state/{spec_basename}/spec-consensus-editor.json",
-  "enhanced_spec_path": ".longtask/specs/{spec_basename}-enhanced-spec.md",
-  "enhanced_spec_sha256": "...",
-  "spec_update_path": ".longtask/reports/{spec}/spec-update.md",
-  "alignment_matrix_path": ".longtask/state/{spec_basename}/alignment-matrix.json",
-  "spec_cross_rounds_final_review_path": ".longtask/state/{spec_basename}/spec-cross-rounds-final-review.json",
-  "spec_cross_rounds_final_review_verdict": "PASS_CLEAN | PASS_WITH_RESIDUAL_RISKS | NEEDS_REVISION",
-  "spec_cross_rounds_residual_risks": [
-    {
-      "id": "spec-r2-blindspot-3",
-      "source_round": "round-2",
-      "description": "...",
-      "severity": "low | medium | high"
-    }
-  ],
+  "spec_sanity_skipped_reason": null,
+  "spec_codex_sanity_path": ".longtask/state/{spec_basename}/spec-codex-sanity.json",
+  "spec_codex_sanity_verdict": "CLEAN | NEEDS_REVISION",
 
   "implementation_plan_path": ".longtask/plans/{spec_basename}-implementation-plan.md",
   "implementation_plan_sha256": "...",
-  "plan_cross_round_codex_mid_summary_paths": [
-    ".longtask/reports/{spec}/rounds/plan-round-1-codex-mid-summary.md"
-  ],
-  "plan_cross_round_state_paths": [
-    ".longtask/reports/{spec}/rounds/plan-round-1-state.md"
-  ],
-  "plan_consensus_editor_path": ".longtask/state/{spec_basename}/plan-consensus-editor.json",
-  "implementation_plan_post_cross_rounds_sha256": "...",
-  "plan_cross_rounds_final_review_path": ".longtask/state/{spec_basename}/plan-cross-rounds-final-review.json",
-  "plan_cross_rounds_final_review_verdict": "PASS_CLEAN | PASS_WITH_RESIDUAL_RISKS | NEEDS_REVISION",
-  "plan_cross_rounds_residual_risks": [],
+  "implementation_plan_post_review_sha256": "...",
+  "autoplan_review_report_path": ".longtask/plans/{spec_basename}-implementation-plan.md#gstack-review-report",
+  "autoplan_review_status": "DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT",
   "plan_integrity_review_path": ".longtask/state/{spec_basename}/plan-integrity.json",
 
   "model_requests": [
@@ -73,7 +44,7 @@
   "claude_subagents": [
     {
       "id": "claude-<uuid>",
-      "role": "spec-roundtable-round-1-phase-claude-engineering",
+      "role": "spec-classifier",
       "model": "opus",
       "phase": "spec-stage",
       "start_at": "...",
@@ -81,9 +52,9 @@
     },
     {
       "id": "claude-<uuid>",
-      "role": "spec-cross-rounds-final-review",
-      "model": "opus-4.7-max",
-      "phase": "spec-stage",
+      "role": "plan-writer",
+      "model": "opus",
+      "phase": "plan-stage",
       "start_at": "...",
       "end_at": "..."
     }
@@ -91,15 +62,7 @@
   "codex_subagents": [
     {
       "id": "codex-<thread_id>",
-      "role": "spec-roundtable-round-1-phase-codex-engineering",
-      "model": "gpt-5.5",
-      "reasoning": "xhigh",
-      "start_at": "...",
-      "end_at": "..."
-    },
-    {
-      "id": "codex-<thread_id>",
-      "role": "spec-codex-mid-summary-round-1",
+      "role": "spec-codex-sanity",
       "model": "gpt-5.5",
       "reasoning": "xhigh",
       "start_at": "...",

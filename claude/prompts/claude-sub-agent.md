@@ -71,7 +71,7 @@ Tier → model mapping (use the long-form model ID when dispatching `Agent`):
 |---|---|
 | `haiku`  | `claude-haiku-4-5` |
 | `sonnet` | `claude-sonnet-4-6` |
-| `opus`   | `claude-opus-4-7` |
+| `opus`   | `claude-opus-4-8` |
 
 Any other value (typo, unrecognised tier) → return `BLOCKED_SPEC` with the
 offending value quoted. Record the resolved tier + model in the heartbeat
@@ -195,7 +195,7 @@ Call the `Agent` tool with:
 
 - `subagent_type: "general-purpose"`
 - `model:` resolved from `model_tier` per the Step 1 table (`claude-haiku-4-5`
-  / `claude-sonnet-4-6` / `claude-opus-4-7`)
+  / `claude-sonnet-4-6` / `claude-opus-4-8`)
 - `description:` short label, e.g. `"longtask {Pn} round {N} worker"`
 - `prompt:` the assembled prompt (one-line Read-traps directive + project
   context + `claude-worker.md` / `claude-worker-retry.md`, with all `{...}`

@@ -172,10 +172,10 @@ write failing test, Step 2: run pytest, Step 3: write implementation."
   sprints).
 - Architecture diagrams, z-stack ordering specs, RAF coalescing rules,
   pointer-events policies — same reason: they are spec-level invariants.
-- Roundtable consensus summaries pasted verbatim. Roundtable output
-  belongs in the enhanced spec (architecture decisions section) or in
-  spec-update.md (clarifications). Plan-writer reads them as context but
-  does NOT copy them into the plan.
+- Architecture-decision summaries pasted verbatim. Such detail belongs in
+  the source spec (architecture decisions section) or in a clarifications
+  note. Plan-writer reads them as context but does NOT copy them into the
+  plan.
 
 ### Allowed (and required) in the plan
 
@@ -205,8 +205,8 @@ write failing test, Step 2: run pytest, Step 3: write implementation."
   1000 lines regardless of phase count.
 - If a phase needs more than 200 lines to specify, the cause is almost
   always one of:
-  1. Roundtable consensus is leaking into the plan → route to enhanced
-     spec.
+  1. Architecture-decision detail is leaking into the plan → route to the
+     source spec.
   2. Phase scope is too wide → split into two phases.
   3. Implementation details are being pre-decided → strip; trust the
      worker.
@@ -282,10 +282,10 @@ phases. Do not weaken the budget.
      `medium` — the codex CLI session (main agent / conductor) typically
      runs at `xhigh`, but cost-dominant execution sub-agents should run
      cheaper unless the phase explicitly bumps via per-phase
-     `reasoning_effort`. Judgment-heavy roles (classifier, lenses,
-     mid-summary, consensus editor, plan writer, plan-integrity reviewer,
-     decision reviewer, final-alignment reviewer, cross-rounds final
-     review) ignore this field and stay at `xhigh` by policy.
+     `reasoning_effort`. Judgment-heavy roles (classifier, codex spec
+     sanity, plan writer, plan-integrity reviewer, decision reviewer,
+     final-alignment reviewer) ignore this field and stay at `xhigh` by
+     policy.
 8. The final E2E2 command must produce or support screenshots. If no credible
    E2E2 screenshot path exists, stop with `BLOCKED_SPEC_REWRITE` and explain
    the missing prerequisite instead of weakening the gate.

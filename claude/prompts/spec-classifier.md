@@ -6,13 +6,12 @@ Rationale: Input classification is an architectural judgment — understanding
 what a spec says, how to split it, and who verifies it. That judgment belongs
 to Claude.
 
-v0.4 change (2026-05-26): the classifier no longer emits separate
-`spec_rounds` + `plan_rounds` + `tier_label` + `suggested_roundtable_mode`.
-The new roundtable design is a single cross-pair shape (codex lenses → codex
-mid-summary → claude lenses → claude end-summary) used for BOTH the spec
-roundtable (Step 2) and the plan roundtable (Step 4b). Heterogeneity is built
-into every round, so there is no longer a "hybrid vs dual" knob. The only
-classifier-controlled axis is `cross_rounds ∈ {1, 2, 3}`.
+v0.5 change (2026-06-05): the spec/plan roundtable was removed entirely. The
+spec stage is now a single automated Codex sanity check (Step 2); the plan
+stage delegates to the gstack `autoplan` skill (Step 4). The classifier
+therefore no longer emits ANY round-count axis (no round-count field,
+`spec_rounds`, `plan_rounds`, `tier_label`, `suggested_roundtable_mode`). It
+only detects the input shape and pre-vetting, and lists advisory lenses.
 
 The Claude Agent tool invocation is: invoke this prompt as a sub-agent with
 the substitutions below. Do not launch this via codex exec.
@@ -74,37 +73,22 @@ Classify task kind and direction/domain. Examples:
 Recommend specialist lenses only when useful. Prefer gstack engineering, CEO,
 design, UI design, and an industry expert when the task direction calls for it.
 
-## Cross-Rounds Tier (v0.4 — three-tier scheme)
+## Risk reasons (no round-count axis)
 
-The roundtable pipeline runs the same cross-pair shape at two stages:
-**Step 2 spec-roundtable** (on the source spec, before plan-writer) and
-**Step 4b plan-roundtable** (on the implementation plan, after plan-writer).
-You MUST emit a single integer `cross_rounds ∈ {1, 2, 3}` that the orchestrator
-applies to BOTH stages.
+There is no longer a round-count knob to emit. Instead, record concrete
+`risk_reasons[]` so the downstream stages (and the user) understand the risk
+surface. The spec stage runs a single automated Codex sanity check (Step 2);
+the plan stage runs the gstack `autoplan` review (Step 4) — neither is tuned by
+the classifier.
 
-A single round = 5 lens × codex (parallel) → 1 codex xhigh mid-summary →
-5 lens × claude (parallel, sees codex round output) → 1 claude opus end-summary
-(round-state). Spec/plan body is NOT mutated in the middle rounds; only
-round-state JSON is produced. The terminal `consensus-editor` (single Claude
-opus) rewrites the body once, and a final `cross-rounds-final-review` (opus
-4.7 max) gives the terminal PASS / NEEDS_REVISION verdict.
+Populate `risk_reasons[]` with concrete drivers when present (cross-module
+contract change, new external dependency, ≥4 phases inferred, ambiguous scope,
+irreversible data migration, regulatory / clinical / patient-safety, security
+boundary, breaking external API, cross-module blast radius >3 modules). It may
+be empty `[]` for low-risk inputs. These reasons are advisory signal, not a
+tuning input.
 
-**default cross_rounds = 1** (REQ-007 — 2026-05-27 token-waste refactor).
-The classifier auto-escalation cap is **2**; `cross_rounds = 3` is **only**
-reachable via explicit `spec.cross_rounds: 3` in spec frontmatter
-(user-forced override). The classifier MUST NOT emit `cross_rounds: 3` on
-its own under any condition — high-risk specs are flagged in
-`risk_reasons[]` and the user decides whether to set `cross_rounds: 3` in
-the frontmatter.
-
-| Tier | cross_rounds | Source | When |
-|---|---|---|---|
-| **light** | 1 | classifier default | Pre-vetted inputs (see `pre_vetted` below), OR low-risk unvetted `source_spec` / `hybrid`. Default minimum. |
-| **medium** | 2 | classifier auto-cap = 2 (max the classifier can emit) | Medium-risk: cross-module contract changes, new external dependency, plan will have ≥4 phases, ambiguous scope. Must cite at least one reason in `risk_reasons`. |
-| **high** | 3 | **user-forced via spec frontmatter only** — classifier NEVER picks 3 | High-risk: irreversible data migration / regulatory / clinical / patient-safety / security boundary / breaking external API / cross-module architectural change with broad blast radius (>3 modules). Classifier still cites the trigger in `risk_reasons` (and may emit `cross_rounds: 2` per the auto-cap), but escalation to 3 is the user's call via `spec.cross_rounds: 3` in frontmatter. |
-
-**Pre-vetting (orthogonal to cross_rounds):** mark `pre_vetted.is_pre_vetted = true`
-when ANY of:
+**Pre-vetting:** mark `pre_vetted.is_pre_vetted = true` when ANY of:
 
 - `input_shape ∈ {plan_with_source, self_contained_plan}` — the input is already
   an executable plan that has been authored under longtask schema discipline.
@@ -112,71 +96,33 @@ when ANY of:
   / `plan-eng-review` AND the conversation transcript shows that gating skill
   ran to completion in the current session.
 
-When `pre_vetted.is_pre_vetted == true`, the **spec-stage roundtable is skipped**
-(orchestrator persists the skip reason). The plan-stage roundtable still runs at
-the chosen `cross_rounds` value as the cheapest defense against bad phase
-decomposition; it is non-skippable. If you mark pre_vetted true at a high
-risk tier, you are saying "the executable plan was already vetted against the
-named risks" — cite both the gating evidence AND the risk justification in
-`pre_vetted.reason`.
+When `pre_vetted.is_pre_vetted == true`, the **spec-stage Codex sanity check
+(Step 2) MAY be skipped** (orchestrator persists the skip reason). The plan-stage
+review via `autoplan` (Step 4) still runs — it is non-skippable regardless of
+input shape, because the plan is the final execution contract. If you mark
+pre_vetted true on a high-risk input, cite both the gating evidence AND the
+risk justification in `pre_vetted.reason`.
 
-**Tier selection precedence** (apply in order, first match wins —
-classifier output max is 2; 3 is user-forced):
+**Removed (do not emit any of these — orchestrator rejects):**
 
-1. **Medium-risk check** — cross-module contract change / new dependency /
-   ≥4 phases inferred / ambiguous scope → `cross_rounds: 2` (this is the
-   auto-cap). Cite the reason in `risk_reasons`. High-risk triggers
-   (irreversible data migration / regulatory / clinical / security boundary
-   / API contract break / >3-module blast radius) ALSO map to
-   `cross_rounds: 2` from the classifier's side, but MUST be cited in
-   `risk_reasons` with the high-risk taxonomy term so the user can decide
-   whether to override to `cross_rounds: 3` via spec frontmatter.
-2. **Default** — `cross_rounds: 1`. `risk_reasons` may be empty.
-
-**Defensive check — classifier MUST NOT emit `cross_rounds: 3`.** If you
-believe a spec needs round 3, emit `cross_rounds: 2` and put a high-risk
-trigger in `risk_reasons`. The orchestrator will reject any classifier
-output with `cross_rounds == 3`; only `spec.cross_rounds: 3` in user
-frontmatter is a legal source for that value.
-
-**No lean-conservative bias.** Pick the tier your evidence actually supports.
-If genuinely uncertain between `1` and `2`, pick `2` and record
-`"ambiguous scope — defaulted to medium"` in `risk_reasons`. Do not pad
-rounds — round 4+ within a stage empirically restate earlier arguments
-rather than surface new ones.
-
-**Removed in v0.4** (do not emit any of these — orchestrator rejects):
-
+- any round-count field (the spec/plan roundtable was removed entirely)
 - `tier_label` (the 4-tier `0+1` / `1+1` / `2+1` / `3+2` scheme is gone)
-- `spec_rounds`, `plan_rounds` (folded into `cross_rounds`)
-- `suggested_roundtable_mode` (`hybrid` / `dual` distinction gone — every round
-  is now codex+claude cross-pair by construction)
-- `discussion_rounds`, `discussion_required` (legacy fields, already deprecated)
+- `spec_rounds`, `plan_rounds`
+- `suggested_roundtable_mode` (`hybrid` / `dual` distinction gone)
+- `discussion_rounds`, `discussion_required` (legacy fields)
 
-## `required_lenses` — default cap ≤ 3 lenses (REQ-003)
+## `required_lenses` — advisory only
 
 Select `required_lenses` from:
 `["engineering", "ceo-product", "design", "ui-design", "domain-expert"]`
 
-**Default cap: ≤ 3 lenses.** The default 3-lens shape is `engineering` +
-one product/CEO lens (`ceo-product`) + one domain-specific lens chosen per
-task kind (`design` for product/UI work, `ui-design` for frontend-heavy
-specs, `domain-expert` for specialized verticals like pathology / clinical
-/ regulatory). Wide-net classification is the cost-explosion path; per-round
-subagent count scales linearly with `|required_lenses|` and the marginal
-information from lenses 4–5 on a typical spec is low.
-
-**Lenses 4 and 5 require risk-justification.** When the spec genuinely
-needs more than 3 lenses (e.g. a frontend+ML+clinical spec that no single
-domain lens covers), `risk_reasons[]` MUST be non-empty AND must contain
-at least one item that cites a specific cross-domain risk for the spec
-under audit — naming the lens that is being added and the concrete risk
-it covers. Generic statements like "the spec is complex" do not qualify;
-cite the cross-domain coupling. Without a matching `risk_reasons` entry,
-the classifier MUST cap at 3 lenses.
-
-Both the codex phase and the claude phase of every round run every selected
-lens — lenses are no longer model-bound.
+This list is **advisory context** for the downstream stages — it is no longer
+a dispatch input. The spec stage runs a single automated Codex sanity check
+(Step 2) with no per-lens dispatch, and the plan stage delegates to the gstack
+`autoplan` skill (Step 4), which owns its own role set (CEO / design / eng /
+DevEx). Keep the list small (default `engineering` + one product/CEO lens +
+at most one domain lens chosen per task kind); it documents which perspectives
+the spec most needs, nothing more.
 
 ## Output
 
@@ -195,7 +141,6 @@ Write exactly one JSON object. It must be suitable to save at
       "reason": "cross-module correctness and verification"
     }
   ],
-  "cross_rounds": 2,
   "required_lenses": ["engineering", "ceo-product", "domain-expert"],
   "risk_reasons": [
     "cross-module contract change",
@@ -206,7 +151,7 @@ Write exactly one JSON object. It must be suitable to save at
     "reason": "input_shape=source_spec; no gating evidence in session"
   },
   "preflight": {
-    "run_spec_enhancement": true,
+    "run_spec_sanity": true,
     "run_plan_writer": true,
     "skip_reason": null
   },
@@ -226,12 +171,12 @@ Write exactly one JSON object. It must be suitable to save at
 }
 ```
 
-### High-risk specs only — 4-lens / 5-lens example
+### Multi-domain spec — advisory-lens example
 
-This shape is reserved for specs that genuinely span multiple non-overlapping
-domains (e.g. a clinical-pathology frontend with both regulatory implications
-and bespoke ML). Each lens beyond the default 3 MUST appear named in a
-`risk_reasons` entry that cites the cross-domain risk it covers.
+When a spec genuinely spans multiple non-overlapping domains (e.g. a
+clinical-pathology frontend with both regulatory implications and bespoke ML),
+list the relevant advisory lenses and cite the cross-domain drivers in
+`risk_reasons`.
 
 ```json
 {
@@ -239,59 +184,45 @@ and bespoke ML). Each lens beyond the default 3 MUST appear named in a
   "task_kinds": ["code implementation"],
   "task_direction": "clinical pathology product",
   "domain": "regulated diagnostic workflow with custom UI",
-  "cross_rounds": 3,
   "required_lenses": ["engineering", "ceo-product", "ui-design", "domain-expert", "design"],
   "risk_reasons": [
-    "irreversible data migration — adding domain-expert lens for clinical-safety coverage",
-    "regulatory / clinical context — adding domain-expert lens for HIPAA boundary review",
-    "frontend redesign spans pathology slide viewer — adding ui-design lens for slide-viewer interaction model",
-    "consumer-facing report layout overhaul — adding design lens for cross-stakeholder UX coherence"
+    "irreversible data migration — clinical-safety coverage",
+    "regulatory / clinical context — HIPAA boundary review",
+    "frontend redesign spans pathology slide viewer — slide-viewer interaction model",
+    "consumer-facing report layout overhaul — cross-stakeholder UX coherence"
   ],
   "pre_vetted": { "is_pre_vetted": false, "reason": "..." },
-  "preflight": { "run_spec_enhancement": true, "run_plan_writer": true, "skip_reason": null },
+  "preflight": { "run_spec_sanity": true, "run_plan_writer": true, "skip_reason": null },
   "expected_final_evidence": ["tests", "browser_e2e", "screenshots", "compliance_review"],
   "confidence": 0.78
 }
 ```
 
-Note that even at 5 lenses, the plan-stage roundtable (Step 4b) still
-consumes a pruned subset (default `engineering` + `ceo-product`) — the
-extra lenses opt in per-phase based on `file_scope` matching, not blanket.
+`required_lenses` is advisory; the plan stage's `autoplan` review (Step 4) runs
+its own CEO / design / eng / DevEx role set regardless of what is listed here.
 
 ### Field Definitions
 
-- `cross_rounds: int` — One of `{1, 2, 3}`. Applied to BOTH spec-roundtable
-  (Step 2) and plan-roundtable (Step 4b). Spec-roundtable is skipped iff
-  `pre_vetted.is_pre_vetted == true`; plan-roundtable always runs at this
-  count. `0` is illegal — Step 4b is non-skippable.
-- `required_lenses: [string]` — Subset of
-  `["engineering","ceo-product","design","ui-design","domain-expert"]` used by
-  the spec-stage roundtable (Step 2). Always non-empty (`cross_rounds ≥ 1` is
-  mandatory, so at least one lens runs per round). Each lens is invoked twice
-  per round (once via codex, once via Claude Agent) — do not pad lenses
-  thinking they alternate.
-
-  **Default cap = 3.** Lenses 4 and 5 are illegal unless `risk_reasons[]`
-  contains a matching cross-domain-risk entry naming the lens being added
-  (per the `## required_lenses` policy section above). The plan-stage
-  roundtable (Step 4b) consumes a **pruned subset** of this set — see
-  REQ-004 / orchestrator Step 4b — so the spec-stage lens count is the
-  upper bound, not necessarily the plan-stage lens count.
-- `risk_reasons: [string]` — Concrete reasons that drove the tier choice.
+- `required_lenses: [string]` — Advisory subset of
+  `["engineering","ceo-product","design","ui-design","domain-expert"]`
+  documenting which perspectives the spec most needs. NOT a dispatch input —
+  Step 2 (Codex sanity) and Step 4 (autoplan) do not consume it as a per-lens
+  fan-out. Keep it small; default `engineering` + one product/CEO lens + at
+  most one domain lens.
+- `risk_reasons: [string]` — Concrete risk drivers (advisory signal).
   Examples: `"irreversible data migration"`, `"regulatory/clinical"`,
   `"security boundary change"`, `"API contract break"`,
-  `"cross-module blast radius"`, `"ambiguous scope — defaulted to medium"`,
-  `"≥4 phases inferred from spec sections"`. Required when `cross_rounds ∈
-  {2, 3}`; may be empty `[]` for `cross_rounds == 1`. At the light tier with
-  pre-vetting, cite the pre-vetting evidence in `pre_vetted.reason` instead.
-- `pre_vetted: object` — Orthogonal to `cross_rounds`. When `is_pre_vetted == true`,
-  spec-stage roundtable is skipped; the `reason` must cite either (a)
+  `"cross-module blast radius"`, `"ambiguous scope"`,
+  `"≥4 phases inferred from spec sections"`. May be empty `[]` for low-risk
+  inputs. When pre-vetted, cite the pre-vetting evidence in `pre_vetted.reason`.
+- `pre_vetted: object` — When `is_pre_vetted == true`, the spec-stage Codex
+  sanity check (Step 2) may be skipped; the `reason` must cite either (a)
   `input_shape ∈ {plan_with_source, self_contained_plan}`, or (b) the gating
   skill name(s) plus a one-line summary of where that gating ran in the
-  current session's transcript. Independent of the tier — a high-risk
-  pre-vetted plan still runs plan-roundtable at `cross_rounds: 3`.
+  current session's transcript. The plan-stage `autoplan` review (Step 4) runs
+  regardless — pre-vetting only gates the spec-stage skip.
 
-If the input is already a plan, set `run_spec_enhancement` and
+If the input is already a plan, set `run_spec_sanity` and
 `run_plan_writer` to `false` only when the readiness standard for its shape is
 satisfied:
 

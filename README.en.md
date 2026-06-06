@@ -1,4 +1,4 @@
-# longtask-skill v0.3.0
+# longtask-skill v0.5.0
 
 Dual-harness longtask repository (Claude + Codex).
 
@@ -6,6 +6,15 @@ Canonical skills:
 
 - Claude: `claude-longtask`, `claude-longtask-plan`, `claude-longtask-code`, `claude-longtask-review`
 - Codex: `codex-longtask`, `codex-longtask-code`
+
+## v0.5.0 highlights
+
+1. Claude-end planning simplified: the spec stage collapses to a single codex sanity check (one `NEEDS_REVISION` pass max); the plan stage now delegates to the gstack `autoplan` skill (CEO / eng / design / DevEx roles, each Claude + Codex cross-voice, with a user approval gate), replacing the bespoke cross-rounds roundtable (9 prompt files removed).
+2. Model tier standardized to `claude-opus-4-8` (opus 4.8 xhigh).
+3. plan->code handoff renamed: `plan_post_review_sha256`, mode `claude-plan-only` / `claude-hybrid`.
+4. Requires gstack (for `autoplan`). final-alignment (Step 8) still mandatory dual Claude+Codex.
+
+See [docs/specs/2026-06-05-planning-stage-simplification-design.md](docs/specs/2026-06-05-planning-stage-simplification-design.md).
 
 ## Codex install
 

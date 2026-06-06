@@ -1,9 +1,18 @@
-# longtask-skill v0.3.0
+# longtask-skill v0.5.0
 
 双执行面（Claude + Codex）的 longtask 技能仓库。
 
 - Claude 面：`claude-longtask`、`claude-longtask-plan`、`claude-longtask-code`、`claude-longtask-review`
 - Codex 面：`codex-longtask`、`codex-longtask-code`
+
+## v0.5.0 关键点
+
+1. Claude 面规划阶段精简：spec 阶段合并为单次 codex sanity（最多一次 `NEEDS_REVISION` 修订）；plan 阶段改用 gstack `autoplan`（CEO/工程/设计/DX 多角色 + Codex 交叉 + 用户审批），移除自研 cross-rounds 圆桌（删除 9 个圆桌 prompt）。
+2. 模型统一 `claude-opus-4-8`（opus 4.8 xhigh）。
+3. plan→code 交接更名：`plan_post_review_sha256`，mode `claude-plan-only` / `claude-hybrid`。
+4. 需安装 gstack（`autoplan` 依赖）。final-alignment（Step 8）保持强制 Claude+Codex 双签。
+
+详见 [docs/specs/2026-06-05-planning-stage-simplification-design.md](docs/specs/2026-06-05-planning-stage-simplification-design.md)。
 
 ## v0.3.0 关键点
 

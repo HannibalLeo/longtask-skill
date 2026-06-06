@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.0 - 2026-06-05 (planning-stage simplification)
+
+### Breaking changes (claude-end)
+
+The claude-end planning stage is simplified and now reuses gstack `autoplan`
+instead of the bespoke cross-rounds roundtable.
+
+- Spec stage: the multi-lens spec roundtable and the standalone codex sanity
+  step are merged into a single automated codex sanity check (one
+  `NEEDS_REVISION` revision pass max).
+- Plan stage: the cross-pair plan roundtable is replaced by the gstack
+  `autoplan` skill (CEO / eng / design / DevEx roles, each as both a Claude
+  subagent and a Codex cross-voice, with a user approval gate). Requires
+  gstack installed.
+- The `cross_rounds` (1/2/3) mechanism is removed entirely; 9 roundtable
+  prompt files deleted.
+- Model tier bumped to `claude-opus-4-8` / `opus 4.8 xhigh`.
+- plan->code handoff renamed: `plan_post_cross_rounds_sha256` ->
+  `plan_post_review_sha256`; mode `claude-cross-rounds*` ->
+  `claude-plan-only` / `claude-hybrid`. Consumers `claude-longtask-code`
+  and `codex-longtask-code` updated.
+- final-alignment (Step 8) unchanged: still mandatory dual Claude+Codex.
+
+codex-end (`codex-longtask`, `codex-longtask-code`) is otherwise unchanged.
+
+See `docs/specs/2026-06-05-planning-stage-simplification-design.md`.
+
 ## 0.4.0 - 2026-05-26 (claude-end roundtable rewrite)
 
 ### Breaking changes (claude-end)

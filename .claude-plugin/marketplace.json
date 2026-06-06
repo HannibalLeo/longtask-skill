@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "claude-longtask-harness",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "source": "./",
       "description": "Discovery source for Claude canonical skills: claude-longtask, claude-longtask-plan, claude-longtask-code, claude-longtask-review."
     }

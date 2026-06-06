@@ -1,4 +1,4 @@
-# Workflows (v0.3.0)
+# Workflows (v0.5.0)
 
 ## 1) Fast Path
 
